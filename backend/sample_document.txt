@@ -1,0 +1,53 @@
+Sample Policy Document for Testing
+Multi-Source Analysis Agent
+=====================================
+
+Executive Summary
+-----------------
+This document presents findings from a comprehensive analysis of renewable energy policies implemented across different regions. The study examines the effectiveness of various policy instruments in promoting clean energy adoption and reducing carbon emissions.
+
+Key Findings
+------------
+1. **Policy Effectiveness**: Carbon pricing mechanisms have shown 40% higher effectiveness in reducing emissions compared to traditional regulatory approaches.
+
+2. **Economic Impact**: Renewable energy investments have created approximately 2.3 million jobs globally, with solar and wind sectors leading employment growth.
+
+3. **Regional Variations**: European Union policies demonstrate the strongest correlation between policy implementation and emission reductions, achieving a 25% decrease over the past decade.
+
+4. **Technology Adoption**: Battery storage technology adoption has increased by 180% in regions with supportive policy frameworks.
+
+Policy Recommendations
+----------------------
+1. Implement comprehensive carbon pricing systems
+2. Establish renewable energy targets of at least 50% by 2030
+3. Provide financial incentives for energy storage deployment
+4. Invest in grid modernization infrastructure
+5. Support workforce retraining programs for fossil fuel industries
+
+Statistical Data
+----------------
+- Global renewable capacity: 3,064 GW (2023)
+- Annual investment required: $4.5 trillion globally
+- Cost reduction in solar PV: 85% since 2010
+- Wind energy cost reduction: 70% since 2010
+- Employment in renewables: 13.7 million jobs worldwide
+
+Challenges and Barriers
+-----------------------
+- Grid integration complexity
+- Intermittency management
+- High upfront capital costs
+- Regulatory uncertainty
+- Public acceptance issues
+
+Conclusion
+----------
+The transition to renewable energy requires coordinated policy efforts combining market-based mechanisms, regulatory frameworks, and public investment. Success depends on addressing technological, economic, and social challenges through comprehensive policy design.
+
+---
+This is a sample document for testing the Multi-Source Analysis Agent.
+You can ask questions like:
+- "What are the main policy recommendations?"
+- "How effective are carbon pricing mechanisms?"
+- "What are the employment impacts of renewable energy?"
+- "What statistical data is provided about renewable energy costs?" 
