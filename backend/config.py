@@ -1,55 +1,95 @@
 import os
-from typing import Optional
+from typing import List
 from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
-
-# Load environment variables early
-load_dotenv()
+from pydantic import Field
 
 class Settings(BaseSettings):
-    # API Keys
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
-    langsmith_api_key: Optional[str] = os.getenv("LANGSMITH_API_KEY")
-    
+    # API Keys - now optional
+    openai_api_key: str = Field("", description="OpenAI API key")
+    tavily_api_key: str = Field("", description="Tavily API key")
+    data_commons_api_key: str = Field("", description="Data Commons API key")
+    langsmith_api_key: str = Field("", description="LangSmith API key")
+
     # LangSmith Configuration
-    langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "multi-source-analysis-agent")
-    langsmith_tracing: bool = os.getenv("LANGSMITH_TRACING", "true").lower() == "true"
-    
-    # Model Configuration
-    llm_model: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-small"
-    
-    # Chunking Configuration
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
-    
-    # Qdrant Configuration
-    qdrant_location: str = ":memory:"  # For development, use in-memory
-    qdrant_collection_name: str = "user_documents"
-    
+    langsmith_project: str = Field("multi-source-analysis", description="LangSmith project name")
+    langsmith_endpoint: str = Field("https://api.smith.langchain.com", description="LangSmith API endpoint")
+
+    # CORS Origins
+    cors_origins: List[str] = Field(
+        default=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002"],
+        description="Allowed CORS origins"
+    )
+
+    # Vector DB Configuration
+    vector_collection_name: str = Field("policy_documents", description="Qdrant collection name")
+    qdrant_collection_name: str = Field("policy_documents", description="Qdrant collection name (alias)")
+    qdrant_location: str = Field(":memory:", description="Qdrant database location (use ':memory:' for in-memory)")
+    vector_size: int = Field(1536, description="Vector embedding size")
+
     # File Upload Configuration
-    max_file_size: int = 50 * 1024 * 1024  # 50MB
-    allowed_file_types: list = [".pdf", ".png", ".jpg", ".jpeg", ".txt", ".md"]
-    upload_directory: str = "uploads"
-    
-    # API Configuration
-    cors_origins: list = ["http://localhost:3000", "http://127.0.0.1:3000"]
-    
+    max_file_size: int = Field(10 * 1024 * 1024, description="Maximum file size in bytes (10MB)")
+    allowed_file_types: List[str] = Field(
+        default=[".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"],
+        description="Allowed file extensions"
+    )
+
+    # LLM Configuration
+    model_name: str = Field("gpt-4o-mini", description="OpenAI model name")
+    llm_model: str = Field("gpt-4o-mini", description="LLM model name (alias for model_name)")
+    embedding_model: str = Field("text-embedding-3-small", description="OpenAI embedding model")
+    temperature: float = Field(0.1, description="LLM temperature")
+    max_tokens: int = Field(2000, description="Maximum tokens for LLM response")
+
+    # Document Processing Configuration
+    chunk_size: int = Field(1000, description="Document chunk size for text splitting")
+    chunk_overlap: int = Field(200, description="Overlap between document chunks")
+
     class Config:
+        env_file = ".env"
         case_sensitive = False
 
+    def validate_required_keys(self) -> dict:
+        """Validate which API keys are missing and return status"""
+        missing_keys = []
+        optional_keys = []
+
+        if not self.openai_api_key:
+            missing_keys.append("OPENAI_API_KEY")
+        if not self.tavily_api_key:
+            optional_keys.append("TAVILY_API_KEY")
+        if not self.data_commons_api_key:
+            optional_keys.append("DATA_COMMONS_API_KEY")
+        if not self.langsmith_api_key:
+            optional_keys.append("LANGSMITH_API_KEY")
+
+        return {
+            "missing_required": missing_keys,
+            "missing_optional": optional_keys,
+            "is_valid": len(missing_keys) == 0
+        }
+
+# Create settings instance
 settings = Settings()
 
-# Validate required API keys
-if not settings.openai_api_key:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+# Validate keys but don't fail immediately
+key_status = settings.validate_required_keys()
 
-if not settings.tavily_api_key:
-    raise ValueError("TAVILY_API_KEY environment variable is required")
+if not key_status["is_valid"]:
+    print("⚠️  Missing required API keys:")
+    for key in key_status["missing_required"]:
+        print(f"   - {key}")
+    print("\n💡 You can set these keys:")
+    print("   1. Via environment variables or .env file")
+    print("   2. Via the frontend interface when it starts")
+    print("   3. Or set them manually:\n")
 
-# Set up LangSmith if configured
-if settings.langsmith_api_key and settings.langsmith_tracing:
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
-    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project 
+    for key in key_status["missing_required"]:
+        print(f'   export {key}="your_key_here"')
+
+    print(f"\n🔗 Frontend will be available at: http://localhost:3001")
+    print(f"🔗 Backend API docs at: http://localhost:8000/docs")
+
+if key_status["missing_optional"]:
+    print("\n📝 Optional API keys not set (features may be limited):")
+    for key in key_status["missing_optional"]:
+        print(f"   - {key}") 

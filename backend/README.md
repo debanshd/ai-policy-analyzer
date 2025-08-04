@@ -63,7 +63,7 @@ pip install uv
 ```bash
 cd backend
 
-# Basic installation (without data_gemma)
+# Basic installation (data_gemma required - see step 5)
 uv sync
 
 # Or using pip
@@ -85,7 +85,7 @@ Create a `.env` file in the backend directory with the following required variab
 OPENAI_API_KEY=your_openai_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 
-# Required for REAL Data Commons (optional - will use simulation otherwise)
+# Required for REAL Data Commons (mandatory - no fallback mode)
 DATA_COMMONS_API_KEY=your_data_commons_api_key_here
 
 # Optional: LangSmith for monitoring
@@ -105,9 +105,9 @@ UPLOAD_DIRECTORY=uploads
 CORS_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
 ```
 
-### 5. Install data_gemma for Real Data Commons Integration (Optional)
+### 5. Install data_gemma for Real Data Commons Integration (Required)
 
-The agent can use the **data_gemma** library for real statistical data from Data Commons, or fall back to simulation mode.
+The agent requires the **data_gemma** library for real statistical data from Data Commons.
 
 **Check Python version first:**
 ```bash
@@ -134,10 +134,10 @@ pip install git+https://github.com/datacommonsorg/llm-tools.git
 - **Large installation**: Includes Google Cloud AI, transformers, and PyTorch (~2-3GB)
 - data_gemma will download DataGemma models automatically on first use
 - Initial model download may take several minutes  
-- The agent will gracefully fall back to simulation mode if data_gemma is not available
+- The agent will fail to start if data_gemma is not available (no simulation mode)
 
 **Installation size comparison:**
-- Basic installation (simulation mode): ~200MB
+- Installation (requires data_gemma): ~2-3GB (includes ML models)
 - Full installation with data_gemma: ~2-3GB (includes ML models)
 
 ### 6. Get API Keys
@@ -348,12 +348,12 @@ python run.py --check-python
 python run.py --test-env
 
 # If data_gemma fails to install (Python < 3.10):
-# The agent will use simulation mode automatically
+# The agent will fail to start - data_gemma is required
 # No action needed - functionality will be preserved
 ```
 
 **data_gemma installation error?**
-- **Most common**: Python version < 3.10 (upgrade Python or use simulation mode)
+- **Most common**: Python version < 3.10 (upgrade Python - data_gemma is required)
 - **Network issues**: Try manual installation: `pip install git+https://github.com/datacommonsorg/llm-tools.git`
 - **Permission issues**: Try with `--user` flag: `pip install --user git+...`
 ```

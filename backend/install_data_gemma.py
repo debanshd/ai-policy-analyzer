@@ -17,9 +17,11 @@ def install_data_gemma():
     if python_version < (3, 10):
         print(f"❌ Python {python_version.major}.{python_version.minor} detected")
         print("❌ data_gemma requires Python 3.10 or higher")
+        print("📝 CRITICAL: data_gemma is REQUIRED for this application to function")
         print("📝 Please upgrade your Python version:")
         print("   - Install Python 3.10+ from https://python.org")
         print("   - Or use pyenv: pyenv install 3.10.12 && pyenv local 3.10.12")
+        print("❌ Application will NOT work without data_gemma")
         return False
     else:
         print(f"✅ Python {python_version.major}.{python_version.minor} is compatible")
@@ -101,12 +103,14 @@ def main():
             print("2. Test with documents: python run.py --test-doc sample_document.txt --prompt 'Your question'")
             print("3. The agent will now use real Data Commons data via data_gemma!")
         else:
-            print("\n⚠️ Installation completed but verification failed")
-            print("   You may still be able to use data_gemma")
+            print("\n❌ CRITICAL: Installation completed but verification failed")
+            print("❌ data_gemma is REQUIRED - the agent will NOT start without it")
     else:
-        print("\n❌ Installation failed")
+        print("\n❌ CRITICAL: data_gemma installation failed")
+        print("❌ The application REQUIRES data_gemma to function")
         print("   You can try manual installation:")
         print("   pip install git+https://github.com/datacommonsorg/llm-tools.git")
+        print("❌ The agent will NOT START without data_gemma")
 
 if __name__ == "__main__":
     main() 

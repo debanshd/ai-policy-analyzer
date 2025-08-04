@@ -1,41 +1,61 @@
-import os
-import uuid
 import asyncio
+import uuid
+import time
 from typing import List, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from config import settings
-from models import (
-    QueryRequest, FileUploadResponse, ErrorResponse, 
-    StreamingUpdate, AgentResponse
-)
-from utils.document_processor import DocumentProcessor, validate_file_upload
-from agent import MultiSourceAnalysisAgent
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-# Global instances
-agent = MultiSourceAnalysisAgent()
-document_processor = DocumentProcessor()
+from config import settings, key_status
+from agent import MultiSourceAnalysisAgent
+from models import FileUploadResponse
+from utils.document_processor import validate_file_upload
+
+# Global variables
+agent: Optional[MultiSourceAnalysisAgent] = None
+
+# API Key update models
+class ApiKeyUpdate(BaseModel):
+    openai_api_key: str = ""
+    tavily_api_key: str = ""
+    data_commons_api_key: str = ""
+    langsmith_api_key: str = ""
+
+class ApiKeyStatus(BaseModel):
+    api_keys: dict
+    status: dict
+    backend_ready: bool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan events for the FastAPI app"""
-    # Startup
-    print("🚀 Multi-Source Analysis Agent starting up...")
+    """Application lifespan manager"""
+    global agent
     
-    # Create upload directory if it doesn't exist
-    os.makedirs(settings.upload_directory, exist_ok=True)
-    
-    # Start background task for session cleanup
-    cleanup_task = asyncio.create_task(cleanup_sessions_periodically())
+    # Only initialize agent if we have required keys
+    if key_status["is_valid"]:
+        print("🚀 Initializing Multi-Source Analysis Agent...")
+        agent = MultiSourceAnalysisAgent()
+        print("✅ Agent initialized successfully")
+    else:
+        print("⏳ Waiting for API keys to be configured...")
+        agent = None
     
     yield
     
-    # Shutdown
-    print("🔄 Multi-Source Analysis Agent shutting down...")
-    cleanup_task.cancel()
+    # Cleanup
+    cleanup_task = asyncio.create_task(cleanup_agent())
+    await cleanup_task
+
+async def cleanup_agent():
+    """Cleanup agent resources"""
+    global agent
+    if agent:
+        # Cleanup vector stores
+        agent.session_stores.clear()
+        print("🧹 Cleaned up agent resources")
 
 # Create FastAPI app
 app = FastAPI(
@@ -64,8 +84,10 @@ async def root():
             "upload": "/upload",
             "query": "/query",
             "session": "/session/{session_id}",
+            "settings": "/settings",
             "health": "/health"
-        }
+        },
+        "setup_required": not key_status["is_valid"]
     }
 
 @app.get("/health")
@@ -73,8 +95,76 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": "2024-01-01T00:00:00Z",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "agent_ready": agent is not None,
+        "keys_configured": key_status["is_valid"]
+    }
+
+@app.get("/settings", response_model=ApiKeyStatus)
+async def get_settings():
+    """Get current API key status and configuration"""
+    # Don't return actual keys for security
+    masked_keys = {}
+    if settings.openai_api_key:
+        masked_keys["openai_api_key"] = f"sk-...{settings.openai_api_key[-4:]}"
+    if settings.tavily_api_key:
+        masked_keys["tavily_api_key"] = f"tvly-...{settings.tavily_api_key[-4:]}"
+    if settings.data_commons_api_key:
+        masked_keys["data_commons_api_key"] = f"dc-...{settings.data_commons_api_key[-4:]}"
+    if settings.langsmith_api_key:
+        masked_keys["langsmith_api_key"] = f"ls-...{settings.langsmith_api_key[-4:]}"
+    
+    return ApiKeyStatus(
+        api_keys=masked_keys,
+        status=key_status,
+        backend_ready=agent is not None
+    )
+
+@app.post("/settings")
+async def update_settings(keys: ApiKeyUpdate):
+    """Update API keys and reinitialize agent if needed"""
+    global agent
+    import os
+    
+    # Update settings and environment variables
+    if keys.openai_api_key:
+        settings.openai_api_key = keys.openai_api_key
+        os.environ["OPENAI_API_KEY"] = keys.openai_api_key
+    if keys.tavily_api_key:
+        settings.tavily_api_key = keys.tavily_api_key
+        os.environ["TAVILY_API_KEY"] = keys.tavily_api_key
+    if keys.data_commons_api_key:
+        settings.data_commons_api_key = keys.data_commons_api_key
+        os.environ["DATA_COMMONS_API_KEY"] = keys.data_commons_api_key
+    if keys.langsmith_api_key:
+        settings.langsmith_api_key = keys.langsmith_api_key
+        os.environ["LANGSMITH_API_KEY"] = keys.langsmith_api_key
+    
+    # Re-validate keys
+    updated_status = settings.validate_required_keys()
+    
+    # Update global key status
+    global key_status
+    key_status = updated_status
+    
+    # Reinitialize agent if we now have all required keys
+    if updated_status["is_valid"] and not agent:
+        try:
+            print("🚀 Initializing agent with new API keys...")
+            agent = MultiSourceAnalysisAgent()
+            print("✅ Agent initialized successfully")
+        except Exception as e:
+            print(f"❌ Failed to initialize agent: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initialize agent with provided keys: {str(e)}"
+            )
+    
+    return {
+        "success": True,
+        "message": "API keys updated successfully",
+        "status": updated_status,
+        "agent_ready": agent is not None
     }
 
 @app.post("/upload", response_model=List[FileUploadResponse])
@@ -87,6 +177,12 @@ async def upload_files(
     
     Creates a new session if session_id is not provided
     """
+    if not agent:
+        raise HTTPException(
+            status_code=503,
+            detail="Service not ready. Please configure API keys first."
+        )
+    
     try:
         # Create new session if needed
         if not session_id:
@@ -130,29 +226,23 @@ async def upload_files(
         
         # Process files and create vectorstore
         try:
-            vectorstore = document_processor.process_uploaded_files(processed_files, session_id)
+            vectorstore, file_info = agent.process_files(processed_files, session_id)
+            agent.set_session_vectorstore(session_id, vectorstore, file_info)
             
-            # Store in agent session
-            agent.set_session_vectorstore(session_id, vectorstore, processed_files)
-            
-            # Add session_id to all responses
-            for response in file_responses:
-                response.message += f" (Session: {session_id})"
-            
+            print(f"✅ Successfully processed {len(processed_files)} files for session {session_id}")
             return file_responses
             
         except Exception as e:
-            print(f"Error processing files: {str(e)}")  # Add logging
-            import traceback
-            traceback.print_exc()  # Print full traceback for debugging
+            print(f"❌ Error processing files: {e}")
             raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to process files: {str(e)}"
+                status_code=500,
+                detail=f"Error processing files: {str(e)}"
             )
     
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Unexpected error during upload: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error during file upload: {str(e)}"
@@ -168,6 +258,12 @@ async def query_documents(
     
     Returns a streaming response with real-time updates as the agent processes
     """
+    if not agent:
+        raise HTTPException(
+            status_code=503,
+            detail="Service not ready. Please configure API keys first."
+        )
+    
     try:
         # Validate session
         session_info = agent.get_session_info(session_id)
@@ -210,108 +306,63 @@ async def query_documents(
 @app.get("/session/{session_id}")
 async def get_session_info(session_id: str):
     """Get information about a specific session"""
-    try:
-        session_info = agent.get_session_info(session_id)
-        
-        if not session_info:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Return sanitized session info (without vectorstore object)
-        return {
-            "session_id": session_id,
-            "files": session_info.get('files', []),
-            "created_at": session_info.get('created_at'),
-            "status": "active"
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
+    if not agent:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving session info: {str(e)}"
+            status_code=503,
+            detail="Service not ready. Please configure API keys first."
         )
+    
+    session_info = agent.get_session_info(session_id)
+    if not session_info:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return session_info
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
-    """Delete a specific session and its data"""
-    try:
-        session_info = agent.get_session_info(session_id)
-        
-        if not session_info:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Remove from agent's session store
-        if session_id in agent.session_stores:
-            del agent.session_stores[session_id]
-        
-        return {"message": f"Session {session_id} deleted successfully"}
-    
-    except HTTPException:
-        raise
-    except Exception as e:
+    """Delete a session and its associated data"""
+    if not agent:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error deleting session: {str(e)}"
+            status_code=503,
+            detail="Service not ready. Please configure API keys first."
         )
+    
+    success = agent.delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {"success": True, "message": f"Session {session_id} deleted successfully"}
 
 @app.get("/sessions")
 async def list_sessions():
     """List all active sessions"""
-    try:
-        sessions = []
-        for session_id, session_data in agent.session_stores.items():
-            sessions.append({
-                "session_id": session_id,
-                "file_count": len(session_data.get('files', [])),
-                "created_at": session_data.get('created_at'),
-                "status": "active"
-            })
-        
-        return {"sessions": sessions, "total": len(sessions)}
-    
-    except Exception as e:
+    if not agent:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error listing sessions: {str(e)}"
+            status_code=503,
+            detail="Service not ready. Please configure API keys first."
         )
-
-# Background task for session cleanup
-async def cleanup_sessions_periodically():
-    """Background task to clean up old sessions"""
-    while True:
-        try:
-            await asyncio.sleep(3600)  # Run every hour
-            agent.cleanup_old_sessions(max_age_hours=24)
-            print(f"✓ Session cleanup completed. Active sessions: {len(agent.session_stores)}")
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            print(f"Error during session cleanup: {e}")
-
-# Custom exception handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc: HTTPException):
-    """Custom HTTP exception handler"""
-    return ErrorResponse(
-        message=exc.detail,
-        details={"status_code": exc.status_code}
-    )
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request, exc: Exception):
-    """General exception handler for unexpected errors"""
-    return ErrorResponse(
-        message="An unexpected error occurred",
-        details={"error": str(exc)}
-    )
+    
+    sessions = agent.list_sessions()
+    return {"sessions": sessions}
 
 if __name__ == "__main__":
     import uvicorn
     
-    print(f"🚀 Starting Multi-Source Analysis Agent...")
-    print(f"📊 Using model: {settings.llm_model}")
-    print(f"🔧 Environment: Development")
+    print("\n" + "="*60)
+    print("🔮 Policy Prism - Multi-Source Analysis Agent")
+    print("="*60)
+    
+    if not key_status["is_valid"]:
+        print("\n⚠️  Setup Required:")
+        print("1. Configure API keys via the web interface")
+        print("2. Or set environment variables before starting")
+        print("\n🔗 Opening frontend at: http://localhost:3001")
+        print("🔗 API documentation: http://localhost:8000/docs")
+    else:
+        print("✅ All required API keys configured")
+        print("🚀 Ready for analysis!")
+    
+    print("\n" + "="*60)
     
     uvicorn.run(
         "main:app",
