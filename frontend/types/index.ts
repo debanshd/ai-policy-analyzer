@@ -7,7 +7,7 @@ export interface FileUploadResponse {
 }
 
 export interface StreamingUpdate {
-  type: 'tool' | 'thought' | 'result' | 'error';
+  type: 'tool' | 'thought' | 'result' | 'error' | 'debug';
   content: string;
   tool?: 'RAG_Tool' | 'DataCommonsTool' | 'TavilyTool';
   metadata?: any;

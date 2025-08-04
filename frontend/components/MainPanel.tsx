@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
-import { AnalysisSession, ChatMessage, UploadedFile } from '@/types'
+import React, { useState, useRef, useEffect } from 'react'
+import { AnalysisSession, ChatMessage, UploadedFile, StreamingUpdate } from '@/types'
 import FileUpload from './FileUpload'
 import ChatInterface from './ChatInterface'
 
@@ -10,6 +10,7 @@ interface MainPanelProps {
   messages: ChatMessage[]
   onAddFiles: (files: UploadedFile[]) => void
   onAddMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  onUpdateStreamingProgress?: (updates: StreamingUpdate[]) => void
 }
 
 export default function MainPanel({
@@ -17,25 +18,16 @@ export default function MainPanel({
   messages,
   onAddFiles,
   onAddMessage,
+  onUpdateStreamingProgress,
 }: MainPanelProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  // Debug logging
-  console.log('MainPanel render:', { 
-    currentSessionId: currentSession?.id, 
-    filesCount: currentSession?.files.length || 0,
-    messagesCount: messages.length 
-  })
+
 
   const handleFileUpload = async (files: File[]) => {
     if (!currentSession) {
-      console.log('No current session, but proceeding with mock upload for testing')
-      // For testing, just log the files and show a success message
-      onAddMessage({
-        type: 'system',
-        content: `Mock upload: Selected ${files.length} file${files.length !== 1 ? 's' : ''}: ${files.map(f => f.name).join(', ')}. Note: Files not actually uploaded in mock mode.`,
-      })
+      console.error('No current session available for file upload')
       return
     }
     
@@ -86,7 +78,15 @@ export default function MainPanel({
   }
 
   const handleSendMessage = async (content: string) => {
-    if (!currentSession || !content.trim()) return
+    if (!content.trim()) return
+    
+    // Generate a session ID if we don't have one
+    const sessionId = currentSession?.id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    // Clear any existing streaming updates when starting a new query
+    setCurrentUpdates([])
+    onUpdateStreamingProgress?.([])
+    completionRef.current = false // Reset completion flag
     
     // Add user message
     onAddMessage({
@@ -98,7 +98,7 @@ export default function MainPanel({
       // Send query to backend with streaming
       const formData = new FormData()
       formData.append('question', content.trim())
-      formData.append('session_id', currentSession.id)
+      formData.append('session_id', sessionId)
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/query`, {
         method: 'POST',
@@ -113,11 +113,15 @@ export default function MainPanel({
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       
+      console.log('🔄 Starting streaming response processing...')
+      
       if (reader) {
         let isStreamComplete = false
+        let updateCount = 0
         while (!isStreamComplete) {
           const { done, value } = await reader.read()
           if (done) {
+            console.log('✅ Stream completed, processed', updateCount, 'updates')
             isStreamComplete = true
             break
           }
@@ -126,22 +130,42 @@ export default function MainPanel({
           const lines = chunk.split('\n')
           
           for (const line of lines) {
+            if (line.trim() === '') continue // Skip empty lines
+            
             if (line.startsWith('data: ')) {
               try {
-                const data = JSON.parse(line.substring(6))
-                // Handle streaming update
-                handleStreamingUpdate(data)
+                const jsonData = line.substring(6)
+                const data = JSON.parse(jsonData)
+                updateCount++
                 
-                // Check if this is the final message
-                if (data.type === 'result' || data.done === true) {
+                // Check if this is the final message first
+                if (data.type === 'result' && data.metadata?.answer) {
+                  console.log('🏁 Final result received, completing stream')
+                  // This is the final result - handle completion
+                  handleStreamComplete(data)
                   isStreamComplete = true
+                } else if (data.type === 'error') {
+                  console.log('❌ Error received:', data.content)
+                  // Handle error and complete stream
+                  onAddMessage({
+                    type: 'assistant',
+                    content: `Error: ${data.content}`,
+                  })
+                  onUpdateStreamingProgress?.([])
+                  setCurrentUpdates([])
+                  isStreamComplete = true
+                } else {
+                  // Regular streaming update
+                  handleStreamingUpdate(data)
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e)
+                console.error('❌ Error parsing SSE data:', e, 'Raw line:', line)
               }
             }
           }
         }
+      } else {
+        console.error('❌ No reader available from response')
       }
       
     } catch (error) {
@@ -155,57 +179,67 @@ export default function MainPanel({
     }
   }
 
+  const [currentUpdates, setCurrentUpdates] = useState<StreamingUpdate[]>([])
+  const completionRef = useRef(false)
+
   const handleStreamingUpdate = (update: any) => {
-    // Update the specific message with streaming data
-    if (update.type === 'result' && update.metadata) {
-      // Final result with complete answer
-      onAddMessage({
-        type: 'assistant',
-        content: update.metadata.answer || update.content,
-      })
-    } else if (update.type === 'thought' || update.type === 'tool') {
-      // Show intermediate updates as thoughts
-      console.log(`[${update.type}] ${update.content}`)
-      // You could update the UI here to show these intermediate steps
-      // For now, we'll just log them
-    } else if (update.type === 'error') {
-      // Handle errors
-      onAddMessage({
-        type: 'assistant',
-        content: `Error: ${update.content}`,
-      })
+    // Create the update object
+    const newUpdate: StreamingUpdate = {
+      type: update.type,
+      content: update.content,
+      tool: update.tool,
+      metadata: update.metadata
     }
+    
+    // Add to streaming updates - useEffect will handle sending to details panel
+    setCurrentUpdates(prev => {
+      const newUpdates = [...prev, newUpdate]
+      return newUpdates
+    })
+  }
+
+  // Send updates to details panel via useEffect (proper React pattern)
+  useEffect(() => {
+    onUpdateStreamingProgress?.(currentUpdates)
+  }, [currentUpdates, onUpdateStreamingProgress])
+
+  const handleStreamComplete = (finalUpdate: any) => {
+    // Prevent duplicate completions
+    if (completionRef.current) {
+      return
+    }
+    
+    completionRef.current = true
+    
+    console.log('🏁 Stream completing with final update:', finalUpdate.type)
+    
+    // Get content for final message
+    const content = finalUpdate.metadata?.answer || finalUpdate.content || 'Analysis complete'
+    
+    // Add final message with current streaming updates
+    onAddMessage({
+      type: 'assistant',
+      content: content,
+      streamingUpdates: [...currentUpdates] // Capture all streaming updates
+    })
+    
+    // Keep updates visible until next prompt - don't clear automatically
+    console.log('✅ Analysis complete - keeping updates visible until next prompt')
   }
 
   if (!currentSession) {
-    // Temporarily create a mock session for testing
-    const mockSession: AnalysisSession = {
-      id: 'mock-session-' + Date.now(),
-      name: 'Test Session',
-      files: [],
-      createdAt: new Date(),
-      lastActive: new Date(),
-    }
-    console.log('Using mock session for testing')
-    
     return (
       <div className="flex-1 flex flex-col">
-        {/* File Upload Area - Always show since no files in mock session */}
-        <div className="p-6 border-b border-border-light">
-          <FileUpload
-            onFilesSelected={handleFileUpload}
-            isUploading={isUploading}
-            error={uploadError}
-          />
-        </div>
-
-        {/* Chat Interface */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <ChatInterface
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            disabled={false} // Enable chat for testing - you can upload files first
-          />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-border-light rounded-lg flex items-center justify-center mb-4 mx-auto">
+              <svg className="w-8 h-8 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-text-primary mb-2">No Active Session</h3>
+            <p className="text-text-secondary">Create a new analysis session to get started</p>
+          </div>
         </div>
       </div>
     )

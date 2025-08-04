@@ -51,9 +51,15 @@ Provide a clear, factual summary:
 """
         return ChatPromptTemplate.from_template(SUMMARY_TEMPLATE)
     
-    def _run(self, query: str, max_results: int = 5, **kwargs) -> Dict[str, Any]:
+    def _run(self, query: str, max_results: int = 5, callback_handler=None, **kwargs) -> Dict[str, Any]:
         """Execute web search using Tavily"""
+        def emit_update(update_type: str, content: str, metadata=None):
+            """Helper to emit updates if callback handler is available"""
+            if callback_handler:
+                callback_handler(update_type, content, metadata)
+        
         try:
+            emit_update("debug", f"🌐 Tavily: Searching for: {query[:50]}...")
             print(f"🌐 Tavily searching for: {query[:50]}...")  # Debug output
             
             # Perform the search with timeout handling
@@ -70,11 +76,13 @@ Provide a clear, factual summary:
                 )
             
             # Run with timeout
+            emit_update("debug", "🔍 Executing web search...")
             with ThreadPoolExecutor() as executor:
                 future = executor.submit(search_with_timeout)
                 try:
                     search_response = future.result(timeout=15)  # 15 second timeout
                 except TimeoutError:
+                    emit_update("debug", "⚠️ Tavily search timed out")
                     print(f"⚠️ Tavily search timed out for: {query}")
                     return {
                         "search_results": [],
@@ -87,6 +95,7 @@ Provide a clear, factual summary:
             search_results = search_response.get("results", [])
             
             if not search_results:
+                emit_update("debug", "❌ No web search results found")
                 return {
                     "search_results": [],
                     "summary": f"No web search results found for: {query}",
@@ -94,6 +103,7 @@ Provide a clear, factual summary:
                     "tool_used": ToolType.TAVILY_TOOL
                 }
             
+            emit_update("debug", f"📊 Processing {len(search_results)} search results...")
             # Format search results for summary
             formatted_results = []
             urls = []
@@ -107,6 +117,7 @@ Provide a clear, factual summary:
                 urls.append(url)
             
             # Generate summary using LLM
+            emit_update("debug", "🤖 Generating summary using LLM...")
             summary_input = {
                 "query": query,
                 "search_results": "\n".join(formatted_results)
@@ -116,6 +127,7 @@ Provide a clear, factual summary:
                 self.summary_prompt.format(**summary_input)
             ).content
             
+            emit_update("debug", f"✅ Tavily: Completed web search with {len(urls)} sources")
             return {
                 "search_results": search_results,
                 "summary": summary,
@@ -124,6 +136,7 @@ Provide a clear, factual summary:
             }
             
         except Exception as e:
+            emit_update("debug", f"❌ Tavily error: {str(e)}")
             return {
                 "search_results": [],
                 "summary": f"Error performing web search: {str(e)}",
@@ -136,13 +149,14 @@ Provide a clear, factual summary:
         """Async version of the tool"""
         return self._run(query, max_results, **kwargs)
     
-    def search_with_entities(self, entities: List[str], context: str = "") -> Dict[str, Any]:
+    def search_with_entities(self, entities: List[str], context: str = "", callback_handler=None) -> Dict[str, Any]:
         """
         Search for multiple entities with additional context
         
         Args:
             entities: List of key terms or entities to search for
             context: Additional context to help with the search
+            callback_handler: Optional callback for streaming updates
             
         Returns:
             Combined search results for all entities
@@ -159,7 +173,7 @@ Provide a clear, factual summary:
                 else:
                     query = entity
                 
-                result = self._run(query, max_results=2)  # Reduce to 2 results for speed
+                result = self._run(query, max_results=2, callback_handler=callback_handler)  # Reduce to 2 results for speed
                 
                 if not result.get("error"):
                     all_results.extend(result.get("search_results", []))

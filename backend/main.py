@@ -282,8 +282,13 @@ async def query_documents(
         
         # Stream the agent's processing
         async def generate_stream():
+            print(f"🔄 Starting stream generation for question: {question[:50]}...")
+            update_count = 0
             async for update in agent.process_query_streaming(question, session_id):
-                yield f"data: {update}\n\n"
+                update_count += 1
+                sse_line = f"data: {update}\n\n"
+                yield sse_line
+            print(f"✅ Stream generation completed, sent {update_count} updates")
         
         return StreamingResponse(
             generate_stream(),

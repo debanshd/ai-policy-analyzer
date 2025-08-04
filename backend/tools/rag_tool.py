@@ -52,14 +52,20 @@ Provide a detailed answer based on the context, and mention which documents or s
 """
         return ChatPromptTemplate.from_template(RAG_TEMPLATE)
     
-    def _run(self, question: str, **kwargs) -> Dict[str, Any]:
+    def _run(self, question: str, callback_handler=None, **kwargs) -> Dict[str, Any]:
         """Execute the RAG tool"""
         import time
-        print(f"🔍 RAG._run called with question: {question[:50]}...")
+        
+        def emit_update(update_type: str, content: str, metadata=None):
+            """Helper to emit updates if callback handler is available"""
+            if callback_handler:
+                callback_handler(update_type, content, metadata)
+        
+        emit_update("debug", f"🔍 RAG._run called with question: {question[:50]}...")
         
         try:
             if not self.vectorstore:
-                print("❌ No vectorstore available")
+                emit_update("debug", "❌ No vectorstore available")
                 return {
                     "error": "No documents have been uploaded for this session",
                     "answer": "Please upload documents before asking questions.",
@@ -67,7 +73,7 @@ Provide a detailed answer based on the context, and mention which documents or s
                     "confidence_score": 0.0
                 }
             
-            print("📚 Creating retriever...")
+            emit_update("debug", "📚 Creating retriever...")
             start_time = time.time()
             
             # Create retriever with higher k for comprehensive results
@@ -75,9 +81,9 @@ Provide a detailed answer based on the context, and mention which documents or s
                 search_kwargs={"k": 5}  # Reduced from 10 for speed
             )
             retriever_time = time.time() - start_time
-            print(f"   ✅ Retriever created in {retriever_time:.2f}s")
+            emit_update("debug", f"   ✅ Retriever created in {retriever_time:.2f}s", {"retriever_time": retriever_time})
             
-            print("🔗 Building RAG chain...")
+            emit_update("debug", "🔗 Building RAG chain...")
             # Build RAG chain using LCEL pattern from notebook
             rag_chain = (
                 # Get context and question
@@ -92,14 +98,14 @@ Provide a detailed answer based on the context, and mention which documents or s
                    "retrieved_docs": itemgetter("context")}
             )
             
-            print("⚙️ Executing RAG chain...")
+            emit_update("debug", "⚙️ Executing RAG chain...")
             chain_start_time = time.time()
             
             # Execute the chain
             result = rag_chain.invoke({"question": question})
             
             chain_time = time.time() - chain_start_time
-            print(f"   ✅ RAG chain executed in {chain_time:.2f}s")
+            emit_update("debug", f"   ✅ RAG chain executed in {chain_time:.2f}s", {"chain_execution_time": chain_time})
             
             # Convert retrieved documents to DocumentChunk format
             relevant_chunks = []

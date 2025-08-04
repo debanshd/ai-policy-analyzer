@@ -358,6 +358,55 @@ python run.py --test-env
 - **Permission issues**: Try with `--user` flag: `pip install --user git+...`
 ```
 
+## Intelligent Tool Selection
+
+The system now includes intelligent tool selection that prevents unnecessary calls to external APIs (Data Commons and Tavily) when the uploaded documents contain sufficient information to answer the user's question.
+
+### How It Works
+
+1. **Document Analysis First**: The system always starts by analyzing uploaded documents using RAG
+2. **Completeness Evaluation**: An LLM evaluates whether the document-based answer is complete and sufficient
+3. **Conditional External Tools**: External tools are only called if:
+   - The document answer is incomplete, OR
+   - The confidence level is below the threshold, OR
+   - External tools are explicitly required via configuration
+
+### Configuration Options
+
+You can control this behavior via environment variables or the `.env` file:
+
+```bash
+# Enable/disable external tools when documents may be insufficient (default: true)
+ENABLE_EXTERNAL_TOOLS=true
+
+# Always use external tools even when documents are complete (default: false)
+REQUIRE_EXTERNAL_TOOLS=false
+
+# Confidence threshold for considering document answer complete (default: 0.8)
+COMPLETENESS_THRESHOLD=0.8
+```
+
+### Benefits
+
+- **Faster Responses**: Questions answered entirely from documents skip external API calls
+- **Cost Efficiency**: Reduces unnecessary API usage and costs
+- **Better User Experience**: Quicker responses for document-based queries
+- **Configurable**: Can be tuned based on your needs
+
+### Example Scenarios
+
+**Will skip external tools:**
+- "What does this policy document say about X?"
+- "Summarize the key points in the uploaded report"
+- "According to the document, what are the requirements for Y?"
+
+**Will use external tools:**
+- "What are the latest statistics on unemployment rates?"
+- "How does this policy compare to current national trends?"
+- "What recent news relates to this topic?"
+
+The system intelligently determines the best approach for each query automatically.
+
 ## Project Structure
 
 ```

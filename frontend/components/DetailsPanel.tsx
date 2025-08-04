@@ -1,16 +1,19 @@
 'use client'
 
 import React from 'react'
-import { AnalysisSession } from '@/types'
+import { AnalysisSession, StreamingUpdate } from '@/types'
 
 interface DetailsPanelProps {
   currentSession: AnalysisSession | null
+  currentStreamingUpdates?: StreamingUpdate[]
+  isProcessing?: boolean
   onClose: () => void
 }
 
-export default function DetailsPanel({ currentSession, onClose }: DetailsPanelProps) {
+export default function DetailsPanel({ currentSession, currentStreamingUpdates = [], isProcessing = false, onClose }: DetailsPanelProps) {
+  
   return (
-    <div className="h-full bg-surface p-4 overflow-y-auto">
+    <div className="h-full bg-surface p-4 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-text-primary">Details</h2>
@@ -25,6 +28,53 @@ export default function DetailsPanel({ currentSession, onClose }: DetailsPanelPr
         </button>
       </div>
 
+      {/* Live Progress Section */}
+      {(isProcessing || currentStreamingUpdates.length > 0) && (
+        <div className="flex-1 flex flex-col mb-6">
+          <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isProcessing ? 'bg-blue-500 animate-pulse' : 'bg-green-500'}`}></div>
+            Live Progress
+          </h3>
+          <div className="bg-background border border-border-light rounded-lg p-3 flex-1 overflow-y-auto min-h-0">
+            {currentStreamingUpdates.length === 0 && !isProcessing ? (
+              <p className="text-text-secondary text-sm italic">Waiting for analysis...</p>
+            ) : (
+              <div className="space-y-2">
+                {currentStreamingUpdates.map((update, index) => (
+                  <div key={index} className="flex items-start gap-2 text-sm">
+                    <div className="flex-shrink-0 mt-1">
+                      {getProgressIcon(update.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`${update.type === 'debug' ? 'text-text-tertiary text-xs font-mono' : 'text-text-secondary'}`}>
+                        {update.content}
+                      </p>
+                      {update.tool && (
+                        <span className="inline-block mt-1 text-xs bg-border-light px-2 py-0.5 rounded">
+                          {update.tool}
+                        </span>
+                      )}
+                      {update.metadata && (update.metadata.confidence !== undefined || update.metadata.retriever_time !== undefined) && (
+                        <span className="text-xs text-text-tertiary ml-2">
+                          {update.metadata.confidence !== undefined && `${(update.metadata.confidence * 100).toFixed(0)}%`}
+                          {update.metadata.retriever_time !== undefined && `${update.metadata.retriever_time.toFixed(2)}s`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {isProcessing && currentStreamingUpdates.length === 0 && (
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Starting analysis...</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {!currentSession ? (
         <div className="text-center py-8">
           <div className="w-12 h-12 bg-border-light rounded-lg flex items-center justify-center mb-4 mx-auto">
@@ -35,127 +85,27 @@ export default function DetailsPanel({ currentSession, onClose }: DetailsPanelPr
           <p className="text-text-secondary text-sm">No active session</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Session Info */}
+        <div className="flex-shrink-0">
+          {/* Session Info - compact when Live Progress is not shown */}
           <div>
-            <h3 className="text-sm font-medium text-text-primary mb-3">Session Info</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Name:</span>
-                <span className="text-text-primary font-medium">{currentSession.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Created:</span>
-                <span className="text-text-primary">{formatDate(currentSession.createdAt)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Last Active:</span>
-                <span className="text-text-primary">{formatDate(currentSession.lastActive)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Session ID:</span>
-                <span className="text-text-primary font-mono text-xs">{currentSession.id}</span>
+            <h3 className="text-sm font-medium text-text-primary mb-3">Session Information</h3>
+            <div className="p-3 bg-background border border-border-light rounded-lg">
+              <div className="text-sm text-text-secondary">
+                <p><span className="font-medium">Session:</span> {currentSession.name}</p>
+                <p><span className="font-medium">Created:</span> {formatDate(currentSession.createdAt)}</p>
+                <p><span className="font-medium">Last Active:</span> {formatDate(currentSession.lastActive)}</p>
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Uploaded Files */}
-          <div>
-            <h3 className="text-sm font-medium text-text-primary mb-3">
-              Uploaded Files ({currentSession.files.length})
-            </h3>
-            
-            {currentSession.files.length === 0 ? (
-              <div className="text-center py-4">
-                <div className="w-12 h-12 bg-border-light rounded-lg flex items-center justify-center mb-2 mx-auto">
-                  <svg className="w-6 h-6 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                <p className="text-text-secondary text-sm">No files uploaded</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {currentSession.files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="p-3 bg-background border border-border-light rounded-lg"
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 mt-0.5 flex-shrink-0">
-                        {getFileIcon(file.filename)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">
-                          {file.filename}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
-                          <span>{formatFileSize(file.size)}</span>
-                          <span>•</span>
-                          <span>{formatDate(file.uploadedAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Analysis Settings */}
-          <div>
-            <h3 className="text-sm font-medium text-text-primary mb-3">Analysis Settings</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-text-secondary">Content Icon</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm text-text-primary">Active</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-text-secondary">Data Commons</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm text-text-primary">Connected</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-text-secondary">Web Search</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm text-text-primary">Available</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Suggested Follow-up Questions */}
-          <div>
-            <h3 className="text-sm font-medium text-text-primary mb-3">Suggested Follow-up Questions</h3>
-            <div className="space-y-2">
-              {getSuggestedQuestions(currentSession).map((question, index) => (
-                <button
-                  key={index}
-                  className="w-full text-left p-2 text-sm text-text-secondary hover:text-text-primary hover:bg-background rounded transition-colors"
-                >
-                  {question}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Export Options */}
-          <div>
-            <h3 className="text-sm font-medium text-text-primary mb-3">Export Options</h3>
-            <div className="space-y-2">
-              <button className="w-full btn-secondary text-sm py-2">
-                Export Session
-              </button>
-              <button className="w-full btn-secondary text-sm py-2">
-                Save as PDF
-              </button>
-            </div>
+      {/* Session Info when Live Progress is active - keep it compact at bottom */}
+      {currentSession && (isProcessing || currentStreamingUpdates.length > 0) && (
+        <div className="flex-shrink-0 mt-4 pt-4 border-t border-border-light">
+          <h3 className="text-xs font-medium text-text-primary mb-2">Session</h3>
+          <div className="text-xs text-text-secondary">
+            <p>{currentSession.name}</p>
           </div>
         </div>
       )}
@@ -163,64 +113,57 @@ export default function DetailsPanel({ currentSession, onClose }: DetailsPanelPr
   )
 }
 
-// Helper function to get file icon based on filename
-function getFileIcon(filename: string) {
-  const extension = filename.toLowerCase().split('.').pop()
-  
-  if (extension === 'pdf') {
-    return (
-      <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
-  } else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension || '')) {
-    return (
-      <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    )
-  } else {
-    return (
-      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
+
+
+// Helper function to get progress icon based on update type
+function getProgressIcon(type: string) {
+  switch (type) {
+    case 'tool':
+      return (
+        <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      )
+    case 'thought':
+      return (
+        <svg className="w-3 h-3 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+      )
+    case 'result':
+      return (
+        <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      )
+    case 'error':
+      return (
+        <svg className="w-3 h-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
+    case 'debug':
+      return (
+        <svg className="w-3 h-3 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      )
+    default:
+      return (
+        <svg className="w-3 h-3 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      )
   }
 }
 
-// Helper function to format file size
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
-}
 
-// Helper function to format date
+
+// Helper function to format date (simplified)
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   }).format(date)
-}
-
-// Helper function to get suggested questions based on session
-function getSuggestedQuestions(session: AnalysisSession): string[] {
-  if (session.files.length === 0) {
-    return [
-      'Upload documents to get started',
-      'What types of files can I analyze?',
-    ]
-  }
-  
-  return [
-    'What are the main findings in these documents?',
-    'Summarize the key recommendations',
-    'How does this relate to current policy trends?',
-    'What are the economic implications?',
-    'Compare findings across uploaded documents',
-  ]
 } 
