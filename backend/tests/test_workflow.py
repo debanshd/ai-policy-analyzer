@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Test script for Multi-Source Analysis Agent with actual document upload and query
+End-to-end workflow test for Multi-Source Analysis Agent
 
-This script demonstrates how to:
+This script demonstrates the complete workflow:
 1. Upload a document to the backend
 2. Query the document with a prompt
-3. Stream the agent's response
+3. Stream the agent's response through all three tools (RAG + Data Commons + Tavily)
 
 Usage:
-    python test_with_document.py --file path/to/document.pdf --prompt "Your question here"
-    python test_with_document.py --help
+    python tests/test_workflow.py --file path/to/document.pdf --prompt "Your question here"
+    python tests/test_workflow.py --help
 """
 
 import argparse

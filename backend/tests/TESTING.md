@@ -26,7 +26,7 @@ Quick reference for testing the backend with documents and prompts.
 ### Method 1: Built-in Test Script (Easiest)
 ```bash
 # Test with any PDF or image
-python test_with_document.py --file document.pdf --prompt "What are the main findings?"
+python tests/test_workflow.py --file document.pdf --prompt "What are the main findings?"
 
 # Or use the run script
 python run.py --test-doc document.pdf --prompt "Summarize the key points"
@@ -124,7 +124,7 @@ Use `sample_document.txt` for testing if you don't have your own documents:
 
 ```bash
 # Convert sample to PDF first, or test with any policy/research document
-python test_with_document.py --file sample_document.txt --prompt "What are the main policy recommendations?"
+python tests/test_workflow.py --file sample_document.txt --prompt "What are the main policy recommendations?"
 ```
 
 ## Advanced Testing

@@ -207,11 +207,11 @@ curl -X POST "http://localhost:8000/query" \
 uv sync --extra test
 
 # Test with a PDF document
-python test_with_document.py --file document.pdf --prompt "What are the main findings?"
+python tests/test_workflow.py --file document.pdf --prompt "What are the main findings?"
 
 # Test with multiple prompts on the same document
-python test_with_document.py --file document.pdf --prompt "Summarize the key points"
-python test_with_document.py --file document.pdf --prompt "What are the policy recommendations?" --session existing_session_id
+python tests/test_workflow.py --file document.pdf --prompt "Summarize the key points"
+python tests/test_workflow.py --file document.pdf --prompt "What are the policy recommendations?" --session existing_session_id
 ```
 
 Example output:
@@ -285,7 +285,7 @@ curl -X POST "http://localhost:8000/upload" \
   -F "files=@chart.png"
 
 # Query across all uploaded documents
-python test_with_document.py --file document1.pdf --prompt "Compare findings from all uploaded documents" --session your_session_id
+python tests/test_workflow.py --file document1.pdf --prompt "Compare findings from all uploaded documents" --session your_session_id
 ```
 
 ### Quick Test (No Document Required)
@@ -294,7 +294,7 @@ If you don't have a document ready, you can test the basic functionality:
 
 ```bash
 # Test without documents (will show appropriate error)
-python test_with_document.py --file sample_document.txt --prompt "What are the main policy recommendations?"
+python tests/test_workflow.py --file sample_document.txt --prompt "What are the main policy recommendations?"
 
 # Use the provided sample document (convert to PDF first if needed)
 # The sample_document.txt contains renewable energy policy content for testing

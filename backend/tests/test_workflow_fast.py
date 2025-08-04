@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-Fast test script for Multi-Source Analysis Agent - skips external APIs for speed
+Fast workflow test for Multi-Source Analysis Agent - RAG only for quick testing
 
-This is a simplified version that only tests document upload and basic RAG,
-without the Tavily web search and Data Commons calls.
+This is a simplified test that focuses on document upload and RAG functionality,
+skipping external APIs (Tavily web search and Data Commons) for faster execution.
+
+Usage:
+    python tests/test_workflow_fast.py --file path/to/document.pdf --prompt "Your question here"
+    python tests/test_workflow_fast.py --help
 """
 
 import argparse

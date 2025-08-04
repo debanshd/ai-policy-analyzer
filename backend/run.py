@@ -51,40 +51,133 @@ async def run_tests():
     """Run the test suite"""
     print("🧪 Running Multi-Source Analysis Agent Tests")
     print("-" * 50)
-    
-    try:
-        from test_backend import main as test_main
-        await test_main()
-    except ImportError:
-        print("❌ test_backend.py not found")
-    except Exception as e:
-        print(f"❌ Tests failed: {e}")
+    print("💡 Use the following commands for comprehensive testing:")
+    print()
+    print("   🌐 Full workflow test:")
+    print("      uv run python tests/test_workflow.py --file sample_document.txt --prompt 'Your question'")
+    print()
+    print("   ⚡ Quick test:")
+    print("      uv run python tests/test_workflow_fast.py --file sample_document.txt --prompt 'Your question'")
+    print()
+    print("   🔧 Environment test:")
+    print("      uv run python run.py --test-env")
+    print()
+    print("   🐍 Python version check:")
+    print("      uv run python run.py --check-python")
+    print()
+    print("✅ Use the commands above for targeted testing")
 
 def run_env_test():
     """Run environment test"""
-    print("🔧 Running Environment Test")
-    print("-" * 30)
+    print("🔧 Environment Test")
+    print("=" * 30)
+    
+    import os
+    from dotenv import load_dotenv
+    
+    # Load environment variables
+    print("📂 Loading .env file...")
+    load_dotenv()
+    
+    # Check for .env file existence
+    if os.path.exists('.env'):
+        print("✅ .env file found")
+        
+        # Read and show file size
+        with open('.env', 'r') as f:
+            content = f.read()
+            lines = content.strip().split('\n')
+            non_empty_lines = [line for line in lines if line.strip() and not line.strip().startswith('#')]
+            
+        print(f"   📄 File size: {len(content)} bytes")
+        print(f"   📋 Total lines: {len(lines)}")
+        print(f"   🔑 Config lines: {len(non_empty_lines)}")
+    else:
+        print("❌ .env file not found")
+        return False
+    
+    # Check specific environment variables
+    print("\n🔑 Checking API keys...")
+    
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        print(f"✅ OpenAI API key: {openai_key[:12]}...{openai_key[-12:]} ({len(openai_key)} chars)")
+    else:
+        print("❌ OPENAI_API_KEY not found")
+    
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    if tavily_key:
+        print(f"✅ Tavily API key: {tavily_key[:12]}...{tavily_key[-12:]} ({len(tavily_key)} chars)")
+    else:
+        print("❌ TAVILY_API_KEY not found")
+    
+    # Check other config
+    print("\n⚙️ Checking other config...")
+    llm_model = os.getenv("LLM_MODEL", "default")
+    print(f"✅ LLM Model: {llm_model}")
+    
+    embed_model = os.getenv("EMBEDDING_MODEL", "default")
+    print(f"✅ Embedding Model: {embed_model}")
+    
+    # Test if we can import the main components
+    print("\n📦 Testing imports...")
     
     try:
-        from test_env import test_environment
-        test_environment()
-    except ImportError:
-        print("❌ test_env.py not found")
+        from config import settings
+        print(f"✅ Config imported: LLM={settings.llm_model}")
     except Exception as e:
-        print(f"❌ Environment test failed: {e}")
+        print(f"❌ Config import failed: {e}")
+        return False
+    
+    try:
+        from langchain_openai import OpenAIEmbeddings
+        print("✅ OpenAI embeddings imported")
+    except Exception as e:
+        print(f"❌ OpenAI import failed: {e}")
+        return False
+        
+    try:
+        from langchain_openai import ChatOpenAI
+        print("✅ ChatOpenAI imported")
+    except Exception as e:
+        print(f"❌ ChatOpenAI import failed: {e}")
+        return False
+    
+    print("\n✅ Environment test completed!")
+    
+    if openai_key and tavily_key:
+        print("🚀 Ready to run full tests!")
+        return True
+    else:
+        print("⚠️ Missing API keys - some tests may fail")
+        return False
 
 def run_python_check():
     """Run Python version check"""
-    print("🐍 Running Python Version Check")
-    print("-" * 35)
+    import sys
     
-    try:
-        from check_python import check_python_version
-        check_python_version()
-    except ImportError:
-        print("❌ check_python.py not found")
-    except Exception as e:
-        print(f"❌ Python check failed: {e}")
+    print("🐍 Python Version Check")
+    print("=" * 25)
+    
+    version = sys.version_info
+    current_version = f"{version.major}.{version.minor}.{version.micro}"
+    
+    print(f"Current Python version: {current_version}")
+    print(f"Full version info: {sys.version}")
+    
+    if version >= (3, 10):
+        print("✅ Python version is compatible with data_gemma!")
+        print("🚀 You can proceed with installation")
+        return True
+    else:
+        print("❌ Python version is too old for data_gemma")
+        print("📝 data_gemma requires Python 3.10 or higher")
+        print()
+        print("🔧 Upgrade options:")
+        print("1. Direct install: https://python.org")
+        print("2. Using pyenv: pyenv install 3.10.12 && pyenv local 3.10.12")
+        print("3. Using conda: conda create -n policy-agent python=3.10")
+        return False
 
 async def run_document_test(file_path: str, prompt: str):
     """Run document test"""
@@ -98,7 +191,7 @@ async def run_document_test(file_path: str, prompt: str):
         # Run the test script with the provided arguments
         result = subprocess.run([
             sys.executable, 
-            "test_with_document.py", 
+            "tests/test_workflow.py", 
             "--file", file_path, 
             "--prompt", prompt
         ], capture_output=False)
@@ -107,7 +200,7 @@ async def run_document_test(file_path: str, prompt: str):
             print(f"❌ Document test failed with exit code {result.returncode}")
         
     except ImportError:
-        print("❌ test_with_document.py not found")
+        print("❌ tests/test_workflow.py not found")
     except Exception as e:
         print(f"❌ Document test failed: {e}")
 
@@ -123,7 +216,7 @@ async def run_fast_test(file_path: str, prompt: str):
         # Run the fast test script with the provided arguments
         result = subprocess.run([
             sys.executable, 
-            "test_with_document_fast.py", 
+            "tests/test_workflow_fast.py", 
             "--file", file_path, 
             "--prompt", prompt
         ], capture_output=False)
@@ -132,7 +225,7 @@ async def run_fast_test(file_path: str, prompt: str):
             print(f"❌ Fast test failed with exit code {result.returncode}")
         
     except ImportError:
-        print("❌ test_with_document_fast.py not found")
+        print("❌ tests/test_workflow_fast.py not found")
     except Exception as e:
         print(f"❌ Fast test failed: {e}")
 
