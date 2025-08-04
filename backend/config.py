@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(200, description="Overlap between document chunks")
 
     # Tool Usage Configuration
-    enable_external_tools: bool = Field(False, description="Enable external tools (Data Commons, Tavily) when documents may not have sufficient information")
+    enable_external_tools: bool = Field(True, description="Enable external tools (Data Commons, Tavily) when documents may not have sufficient information")
     require_external_tools: bool = Field(False, description="Always use external tools even when documents have complete information")
     completeness_threshold: float = Field(0.5, description="Confidence threshold (0-1) for considering document answer complete")
 

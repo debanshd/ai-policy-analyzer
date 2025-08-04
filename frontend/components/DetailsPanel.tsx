@@ -11,11 +11,6 @@ interface DetailsPanelProps {
 }
 
 export default function DetailsPanel({ currentSession, currentStreamingUpdates = [], isProcessing = false, onClose }: DetailsPanelProps) {
-  console.log('🗂️ DetailsPanel render:', { 
-    isProcessing, 
-    updatesCount: currentStreamingUpdates.length,
-    showLiveProgress: isProcessing || currentStreamingUpdates.length > 0
-  })
   
   return (
     <div className="h-full bg-surface p-4 flex flex-col">

@@ -84,7 +84,6 @@ export default function MainPanel({
     const sessionId = currentSession?.id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     
     // Clear any existing streaming updates when starting a new query
-    console.log('🧹 Clearing previous analysis updates for new query')
     setCurrentUpdates([])
     onUpdateStreamingProgress?.([])
     completionRef.current = false // Reset completion flag
@@ -195,14 +194,12 @@ export default function MainPanel({
     // Add to streaming updates - useEffect will handle sending to details panel
     setCurrentUpdates(prev => {
       const newUpdates = [...prev, newUpdate]
-      console.log('📤 Adding update to state:', newUpdates.length, '-', update.type)
       return newUpdates
     })
   }
 
   // Send updates to details panel via useEffect (proper React pattern)
   useEffect(() => {
-    console.log('📤 Sending updates to details panel via useEffect:', currentUpdates.length)
     onUpdateStreamingProgress?.(currentUpdates)
   }, [currentUpdates, onUpdateStreamingProgress])
 

@@ -302,13 +302,26 @@ Examples of questions typically answerable from documents:
                 yield self._create_update("debug", "📊 Starting Data Commons analysis with data_gemma...")
                 await asyncio.sleep(0)  # Allow update to be sent immediately
                 # Create context-rich query combining original question with RAG insights
-                enriched_query = f"{question}\n\nContext from documents: {rag_answer[:200]}..."
+                enriched_query = f"{question}\n\nDocument context: {rag_answer[:300]}...\n\nPlease provide specific statistical data and trends with Data Commons URLs when available."
                 yield self._create_update("debug", f"📊 Query: {enriched_query[:100]}...")
                 await asyncio.sleep(0)  # Allow update to be sent immediately
                 
                 try:
+                    # Store updates that will be collected from tool
+                    tool_updates = []
+                    
+                    def tool_callback_handler(update_type: str, content: str, metadata=None):
+                        """Collect tool updates"""
+                        tool_updates.append((update_type, content, metadata))
+                    
                     # Hard failure if data_gemma fails - no simulation mode fallback
-                    data_commons_result = self.data_commons_tool._run(query=enriched_query)
+                    data_commons_result = self.data_commons_tool._run(query=enriched_query, callback_handler=tool_callback_handler)
+                    
+                    # Yield collected updates
+                    for update_type, content, metadata in tool_updates:
+                        yield self._create_update(update_type, content, ToolType.DATA_COMMONS_TOOL, metadata)
+                        await asyncio.sleep(0)  # Allow update to be sent immediately
+                    
                     tools_used.append(ToolType.DATA_COMMONS_TOOL)
                     yield self._create_update("debug", "✅ Data Commons analysis completed")
                     await asyncio.sleep(0)  # Allow update to be sent immediately
@@ -340,7 +353,20 @@ Examples of questions typically answerable from documents:
                     await asyncio.sleep(0)  # Allow update to be sent immediately
                     
                     try:
-                        tavily_result = self.tavily_tool.search_with_entities(search_entities, context="policy analysis research")
+                        # Store updates that will be collected from Tavily tool
+                        tavily_updates = []
+                        
+                        def tavily_callback_handler(update_type: str, content: str, metadata=None):
+                            """Collect Tavily tool updates"""
+                            tavily_updates.append((update_type, content, metadata))
+                        
+                        tavily_result = self.tavily_tool.search_with_entities(search_entities, context="policy analysis research", callback_handler=tavily_callback_handler)
+                        
+                        # Yield collected updates
+                        for update_type, content, metadata in tavily_updates:
+                            yield self._create_update(update_type, content, ToolType.TAVILY_TOOL, metadata)
+                            await asyncio.sleep(0)  # Allow update to be sent immediately
+                        
                         tools_used.append(ToolType.TAVILY_TOOL)
                         yield self._create_update("debug", "✅ Web search completed")
                         await asyncio.sleep(0)  # Allow update to be sent immediately
@@ -392,7 +418,12 @@ Examples of questions typically answerable from documents:
                 for i, point in enumerate(data_points[:3], 1):  # Show top 3 points
                     value = point.get("value", "No data")
                     source = point.get("source", "Data Commons")
-                    data_insights += f"{i}. {value} (Source: {source})\n"
+                    url = point.get("url", "")
+                    
+                    if url:  # Only include URL if it exists and is not empty
+                        data_insights += f"{i}. {value} (Source: {source} - URL: {url})\n"
+                    else:
+                        data_insights += f"{i}. {value} (Source: {source})\n"
             elif should_use_external_tools:
                 data_insights = data_commons_result.get("summary", "No statistical data available")
             else:
@@ -401,7 +432,15 @@ Examples of questions typically answerable from documents:
             # Handle web context
             web_context = ""
             if should_use_external_tools:
-                web_context = tavily_result.get("summary", "")
+                web_summary = tavily_result.get("summary", "")
+                web_urls = tavily_result.get("urls", [])
+                
+                if web_summary:
+                    web_context = f"Web Search Results:\n{web_summary}\n"
+                    if web_urls:
+                        web_context += f"\nRelevant URLs: {', '.join(web_urls[:3])}"  # Show top 3 URLs
+                else:
+                    web_context = "No relevant web search results found"
             else:
                 web_context = "Web search not performed - answer based on document content only"
             
@@ -445,28 +484,56 @@ Examples of questions typically answerable from documents:
     
     def _create_synthesis_prompt(self) -> ChatPromptTemplate:
         """Create prompt for final synthesis"""
-        SYNTHESIS_TEMPLATE = """You are synthesizing a comprehensive analysis for a policy analyst. Combine the insights from multiple sources to provide a thorough, well-structured answer.
+        SYNTHESIS_TEMPLATE = """You are synthesizing a comprehensive analysis for a policy analyst. Combine insights from multiple sources to provide a thorough, well-structured answer with EXPLICIT source attribution.
 
 **User Question**: {question}
 
-**Document Analysis** (from uploaded files: {uploaded_files}):
+## SOURCE 1: DOCUMENT ANALYSIS (PDF Files: {uploaded_files})
 {rag_analysis}
 
-**Statistical Data Insights**:
+## SOURCE 2: STATISTICAL DATA 
 {data_insights}
 
-**Web Context & Broader Information**:
+## SOURCE 3: WEB RESEARCH
 {web_context}
 
-**Instructions**:
-1. Provide a comprehensive answer that integrates all three sources of information
-2. Clearly indicate when you're drawing from uploaded documents vs. external sources
-3. Structure your response logically with clear sections or points
-4. Highlight any interesting connections or contradictions between sources
-5. Include specific details and evidence to support your analysis
-6. Maintain a professional, analytical tone suitable for policy research
+**CRITICAL INSTRUCTIONS FOR SOURCE ATTRIBUTION**:
 
-**Comprehensive Analysis**:
+1. **CLEARLY IDENTIFY SOURCE FOR EACH PIECE OF INFORMATION**:
+   - Start each paragraph or claim by identifying the source
+   - Use these formats: "According to the uploaded PDF documents..." OR "Data Commons statistical data shows..." OR "Web research indicates..."
+
+2. **USE PRECISE INLINE CITATIONS**:
+   - [PDF: filename] for document information
+   - [Data Commons: URL] for statistical data ONLY when URLs are provided in SOURCE 2 above
+   - [Data Commons] for statistical data when no URL is available
+   - [Web: URL] for web search information ONLY when URLs are provided in SOURCE 3 above
+   - [Web] for web search information when no URL is available
+
+3. **STRUCTURE YOUR RESPONSE WITH SOURCE SECTIONS**:
+   - **Document Insights**: What the PDF files reveal
+   - **Statistical Evidence**: What Data Commons data shows  
+   - **External Context**: What web research adds
+   - **Synthesis**: How all sources combine to answer the question
+
+4. **ONLY USE REAL URLs**: Only include URLs in citations if they are explicitly provided in the source sections above. Do not create or assume URLs.
+
+5. **END WITH COMPLETE SOURCE LIST**: List all sources with clickable URLs
+
+**Example Response Structure**:
+## Document Insights
+According to the uploaded PDF documents, Australia is a major lithium producer [PDF: IEA_report.pdf]...
+
+## Statistical Evidence  
+Data Commons statistical data shows production increasing 15% annually [Data Commons] (URL would only be included if provided in SOURCE 2 above)...
+
+## External Context
+Web research indicates that industry experts predict continued growth due to EV demand [Web] (URL would only be included if provided in SOURCE 3 above)...
+
+## Analysis & Synthesis
+Combining all sources...
+
+**Your Comprehensive Analysis**:
 """
         return ChatPromptTemplate.from_template(SYNTHESIS_TEMPLATE)
     

@@ -89,7 +89,6 @@ export default function PolicyPrismApp() {
 
   // Update streaming updates for the details panel
   const updateStreamingProgress = useCallback((updates: StreamingUpdate[]) => {
-    console.log('🎯 PolicyPrismApp received updates:', updates.length, updates.map(u => u.type).join(', '))
     setCurrentStreamingUpdates(updates)
     setIsProcessing(updates.length > 0)
   }, [])
