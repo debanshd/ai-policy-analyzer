@@ -9,10 +9,10 @@ class ToolType(str, Enum):
 
 class StreamingUpdate(BaseModel):
     """Model for streaming updates during agent execution"""
-    type: str = Field(..., description="Type of update: 'tool', 'thought', 'result', 'error'")
+    type: str = Field(..., description="Type of update: 'tool', 'thought', 'result', 'error', 'debug'")
     content: str = Field(..., description="Content of the update")
     tool: Optional[ToolType] = Field(None, description="Tool being used (if applicable)")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata like timing, confidence, etc.")
 
 class QueryRequest(BaseModel):
     """Model for query requests"""

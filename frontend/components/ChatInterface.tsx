@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { ChatMessage, StreamingUpdate } from '@/types'
+import { ChatMessage } from '@/types'
 
 interface ChatInterfaceProps {
   messages: ChatMessage[]
@@ -198,14 +198,7 @@ function MessageComponent({ message }: { message: ChatMessage }) {
           </div>
           
           <div className="flex-1">
-            {/* Streaming Updates */}
-            {message.streamingUpdates && message.streamingUpdates.length > 0 && (
-              <div className="space-y-1 mb-3">
-                {message.streamingUpdates.map((update, index) => (
-                  <StreamingUpdateComponent key={index} update={update} />
-                ))}
-              </div>
-            )}
+            {/* Streaming Updates removed - now only shown in right panel */}
             
             {/* Main Content */}
             {message.content && (
@@ -233,41 +226,4 @@ function MessageComponent({ message }: { message: ChatMessage }) {
   )
 }
 
-// Streaming Update Component
-function StreamingUpdateComponent({ update }: { update: StreamingUpdate }) {
-  const getIcon = () => {
-    switch (update.type) {
-      case 'tool':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        )
-      case 'thought':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-        )
-      default:
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        )
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2 text-sm text-text-secondary bg-surface rounded px-3 py-1.5">
-      {getIcon()}
-      <span>{update.content}</span>
-      {update.tool && (
-        <span className="text-xs bg-border-light px-2 py-0.5 rounded">
-          {update.tool}
-        </span>
-      )}
-    </div>
-  )
-} 
+// Streaming updates now only shown in right panel DetailsPanel component 

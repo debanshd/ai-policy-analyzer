@@ -38,7 +38,15 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
       if (response.ok) {
         const data = await response.json()
         console.log('Loaded keys:', data)
-        setKeys(data.api_keys || keys)
+        
+        // Ensure all keys are strings to avoid controlled/uncontrolled input issues
+        const loadedKeys = data.api_keys || {}
+        setKeys({
+          openai_api_key: loadedKeys.openai_api_key || '',
+          tavily_api_key: loadedKeys.tavily_api_key || '',
+          data_commons_api_key: loadedKeys.data_commons_api_key || '',
+          langsmith_api_key: loadedKeys.langsmith_api_key || '',
+        })
       }
     } catch (error) {
       console.error('Failed to load existing keys:', error)
@@ -123,10 +131,6 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
 
   if (!isOpen) return null
 
-  // Debug: log the keys object
-  console.log('Rendering with keys:', keys)
-  console.log('Keys entries:', Object.entries(keys))
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -151,10 +155,6 @@ export default function SettingsModal({ isOpen, onClose, onSave }: SettingsModal
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Debug info */}
-          <div className="bg-yellow-100 p-2 rounded text-sm">
-            Debug: Found {Object.keys(keys).length} keys: {Object.keys(keys).join(', ')}
-          </div>
 
           {/* OpenAI API Key */}
           <div className="space-y-2">

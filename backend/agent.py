@@ -1,6 +1,7 @@
 import uuid
 import time
 import json
+import asyncio
 from typing import Dict, Any, List, Optional, AsyncGenerator, Iterator
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -94,6 +95,84 @@ Please provide a comprehensive analysis by combining insights from all available
 """
         return ChatPromptTemplate.from_template(AGENT_TEMPLATE)
 
+    def _evaluate_answer_completeness(self, question: str, rag_answer: str, relevant_chunks: list) -> dict:
+        """
+        Evaluate if the RAG answer provides sufficient information to answer the user's question
+        
+        Returns:
+            dict with 'is_complete' (bool), 'confidence' (float), and 'reasoning' (str)
+        """
+        evaluation_prompt = ChatPromptTemplate.from_template("""
+You are an expert evaluator determining if a document-based answer fully addresses a user's question.
+
+Question: {question}
+
+Answer from Documents: {rag_answer}
+
+Number of relevant document sections found: {chunk_count}
+
+Your task: Determine if this answer is COMPLETE and SUFFICIENT to fully address the user's question.
+
+Consider:
+1. Does the answer directly address all aspects of the question?
+2. Is the information specific and detailed enough?
+3. Are there obvious gaps that would require external data sources?
+4. Would the user be satisfied with this answer alone?
+
+Respond with a JSON object containing:
+{{
+    "is_complete": true/false,
+    "confidence": 0.0-1.0,
+    "reasoning": "Brief explanation of your assessment"
+}}
+
+Examples of questions that typically need external data:
+- Current statistics, recent data, or real-time information
+- Comparative analysis requiring broad datasets
+- Questions about trends or changes over time
+- Questions asking for specific numerical data not in documents
+
+Examples of questions typically answerable from documents:
+- Policy explanations, definitions, or interpretations
+- Information explicitly contained in the uploaded documents
+- Analysis of document content or summarization
+- Questions about what the documents say or contain
+""")
+        
+        try:
+            evaluation_input = {
+                "question": question,
+                "rag_answer": rag_answer,
+                "chunk_count": len(relevant_chunks)
+            }
+            
+            response = self.llm.invoke(evaluation_prompt.format(**evaluation_input))
+            
+            # Parse JSON response
+            import json
+            try:
+                result = json.loads(response.content)
+                # Validate required fields
+                if all(key in result for key in ['is_complete', 'confidence', 'reasoning']):
+                    return result
+            except json.JSONDecodeError:
+                pass
+                
+            # Fallback if JSON parsing fails
+            return {
+                "is_complete": False,
+                "confidence": 0.5,
+                "reasoning": "Could not properly evaluate completeness"
+            }
+            
+        except Exception as e:
+            print(f"⚠️ Error evaluating answer completeness: {e}")
+            return {
+                "is_complete": False,
+                "confidence": 0.5,
+                "reasoning": f"Evaluation failed: {str(e)}"
+            }
+
     def set_session_vectorstore(self, session_id: str, vectorstore: Qdrant, file_info: List[Dict]):
         """Store vectorstore and file info for a session"""
         if session_id not in self.session_stores:
@@ -128,27 +207,51 @@ Please provide a comprehensive analysis by combining insights from all available
             # Check if session has documents
             if session_id not in self.session_stores:
                 yield self._create_update("error", "No documents uploaded for this session. Please upload documents first.")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
                 return
             
             session_info = self.session_stores[session_id]
             uploaded_files = [f.get('filename', 'Unknown') for f in session_info.get('files', [])]
             
             yield self._create_update("thought", "Starting comprehensive analysis...")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             
             # Step 1: RAG Analysis
             yield self._create_update("tool", "Analyzing uploaded documents...", ToolType.RAG_TOOL)
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             
             if not self.rag_tool:
                 yield self._create_update("error", "RAG tool not initialized")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
                 return
                 
-            print(f"🔍 Starting RAG analysis for: {question[:50]}...")  # Debug
-            rag_result = self.rag_tool._run(question)
-            print(f"✅ RAG analysis completed")  # Debug
+            yield self._create_update("debug", f"🔍 Starting RAG analysis for: {question[:50]}...")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
+            
+            # Store updates from RAG tool and yield them as they come
+            async def async_rag_callback(update_type: str, content: str, metadata=None):
+                yield self._create_update(update_type, content, metadata=metadata)
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+            
+            # For now, collect updates synchronously but yield them individually
+            rag_updates = []
+            def rag_callback(update_type: str, content: str, metadata=None):
+                rag_updates.append((update_type, content, metadata))
+            
+            rag_result = self.rag_tool._run(question, callback_handler=rag_callback)
+            
+            # Yield collected RAG updates individually with delays
+            for update_type, content, metadata in rag_updates:
+                yield self._create_update(update_type, content, metadata=metadata)
+                await asyncio.sleep(0.1)  # Small delay to simulate real-time processing
+            
+            yield self._create_update("debug", "✅ RAG analysis completed")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             tools_used.append(ToolType.RAG_TOOL)
             
             if rag_result.get("error"):
                 yield self._create_update("error", f"RAG analysis failed: {rag_result['error']}")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
                 return
             
             rag_answer = rag_result.get("answer", "")
@@ -161,91 +264,160 @@ Please provide a comprehensive analysis by combining insights from all available
                     all_sources.append(filename)
             
             yield self._create_update("result", f"✓ Found relevant information in {len(relevant_chunks)} document sections")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             
-            # Step 2: Data Commons Analysis with data_gemma
-            yield self._create_update("tool", "Fetching real statistical data from Data Commons...", ToolType.DATA_COMMONS_TOOL)
+            # Evaluate if the RAG answer is complete
+            yield self._create_update("thought", "Evaluating if document contains sufficient information...")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
+            
+            completeness_eval = self._evaluate_answer_completeness(question, rag_answer, relevant_chunks)
+            is_complete = completeness_eval.get("is_complete", False)
+            confidence = completeness_eval.get("confidence", 0.0)
+            reasoning = completeness_eval.get("reasoning", "")
+            
+            yield self._create_update("debug", f"📋 Completeness evaluation: complete={is_complete}, confidence={confidence:.2f}", metadata={"confidence": confidence, "is_complete": is_complete})
+            await asyncio.sleep(0)  # Allow update to be sent immediately
+            yield self._create_update("debug", f"📋 Reasoning: {reasoning}", metadata={"reasoning": reasoning})
+            await asyncio.sleep(0)  # Allow update to be sent immediately
+            
+            # Initialize default results for external tools
+            data_commons_result = {"data_points": [], "source": "", "methodology": "", "summary": ""}
+            tavily_result = {"summary": "", "urls": [], "search_results": []}
+            
+            # Determine if we should use external tools
+            should_use_external_tools = (
+                settings.require_external_tools or  # Force external tools if configured
+                (settings.enable_external_tools and  # External tools enabled AND
+                 (not is_complete or confidence < settings.completeness_threshold))  # (incomplete OR low confidence)
+            )
+            
+            if should_use_external_tools:
+                yield self._create_update("thought", f"Document analysis confidence: {confidence:.1%}. Enhancing with external sources...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
                 
-            print(f"📊 Starting Data Commons analysis with data_gemma...")  # Debug
-            # Create context-rich query combining original question with RAG insights
-            enriched_query = f"{question}\n\nContext from documents: {rag_answer[:200]}..."
-            print(f"📊 Query: {enriched_query[:100]}...")  # Debug
-            
-            # Hard failure if data_gemma fails - no simulation mode fallback
-            data_commons_result = self.data_commons_tool._run(query=enriched_query)
-            tools_used.append(ToolType.DATA_COMMONS_TOOL)
-            print(f"✅ Data Commons analysis completed")  # Debug
-            
-            methodology = data_commons_result.get("methodology", "unknown")
-            data_points_count = len(data_commons_result.get("data_points", []))
-            yield self._create_update("result", f"✓ Real statistical data retrieved via {methodology} methodology ({data_points_count} data points)")
-            
-            # Add data commons sources
-            source = data_commons_result.get("source", "Data Commons")
-            if source not in all_sources:
-                all_sources.append(source)
-            
-            # Step 3: Web search for broader context
-            yield self._create_update("tool", "Searching web for broader context and definitions...", ToolType.TAVILY_TOOL)
-            
-            if not self.tavily_tool:
-                yield self._create_update("error", "Tavily tool not initialized")
-                return
-            
-            # Extract key terms from question and RAG results for web search
-            question_terms = [word for word in question.split() if len(word) > 3 and word.lower() not in ['what', 'where', 'when', 'how', 'why', 'are', 'the', 'and', 'for', 'with', 'this']]
-            search_entities = question_terms[:2] if question_terms else [question.split()[0]]  # Use first 2 meaningful terms
-            print(f"🌐 Starting web search for entities: {search_entities}")  # Debug
-            
-            try:
-                tavily_result = self.tavily_tool.search_with_entities(search_entities, context="policy analysis research")
-                tools_used.append(ToolType.TAVILY_TOOL)
-                print(f"✅ Web search completed")  # Debug
-            except Exception as e:
-                print(f"⚠️ Web search failed: {e}")
-                tavily_result = {
-                    "summary": f"Web search encountered an issue: {str(e)}",
-                    "urls": [],
-                    "search_results": []
-                }
-                yield self._create_update("result", "⚠️ Web search completed with warnings")
-            
-            # Add web sources
-            web_urls = tavily_result.get("urls", [])
-            all_sources.extend([url for url in web_urls[:5] if url not in all_sources])  # Limit URLs
-            
-            yield self._create_update("result", f"✓ Found {len(tavily_result.get('search_results', []))} web sources")
+                # Step 2: Data Commons Analysis with data_gemma
+                yield self._create_update("tool", "Fetching real statistical data from Data Commons...", ToolType.DATA_COMMONS_TOOL)
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+                    
+                yield self._create_update("debug", "📊 Starting Data Commons analysis with data_gemma...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+                # Create context-rich query combining original question with RAG insights
+                enriched_query = f"{question}\n\nContext from documents: {rag_answer[:200]}..."
+                yield self._create_update("debug", f"📊 Query: {enriched_query[:100]}...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+                
+                try:
+                    # Hard failure if data_gemma fails - no simulation mode fallback
+                    data_commons_result = self.data_commons_tool._run(query=enriched_query)
+                    tools_used.append(ToolType.DATA_COMMONS_TOOL)
+                    yield self._create_update("debug", "✅ Data Commons analysis completed")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+                    
+                    methodology = data_commons_result.get("methodology", "unknown")
+                    data_points_count = len(data_commons_result.get("data_points", []))
+                    yield self._create_update("result", f"✓ Real statistical data retrieved via {methodology} methodology ({data_points_count} data points)")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+                    
+                    # Add data commons sources
+                    source = data_commons_result.get("source", "Data Commons")
+                    if source not in all_sources:
+                        all_sources.append(source)
+                except Exception as e:
+                    yield self._create_update("debug", f"⚠️ Data Commons failed: {e}")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+                    yield self._create_update("result", "⚠️ Data Commons unavailable, continuing with document analysis")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+                
+                # Step 3: Web search for broader context
+                yield self._create_update("tool", "Searching web for broader context and definitions...", ToolType.TAVILY_TOOL)
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+                
+                if self.tavily_tool:
+                    # Extract key terms from question and RAG results for web search
+                    question_terms = [word for word in question.split() if len(word) > 3 and word.lower() not in ['what', 'where', 'when', 'how', 'why', 'are', 'the', 'and', 'for', 'with', 'this']]
+                    search_entities = question_terms[:2] if question_terms else [question.split()[0]]  # Use first 2 meaningful terms
+                    yield self._create_update("debug", f"🌐 Starting web search for entities: {search_entities}")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+                    
+                    try:
+                        tavily_result = self.tavily_tool.search_with_entities(search_entities, context="policy analysis research")
+                        tools_used.append(ToolType.TAVILY_TOOL)
+                        yield self._create_update("debug", "✅ Web search completed")
+                        await asyncio.sleep(0)  # Allow update to be sent immediately
+                        
+                        # Add web sources
+                        web_urls = tavily_result.get("urls", [])
+                        all_sources.extend([url for url in web_urls[:5] if url not in all_sources])  # Limit URLs
+                        
+                        yield self._create_update("result", f"✓ Found {len(tavily_result.get('search_results', []))} web sources")
+                        await asyncio.sleep(0)  # Allow update to be sent immediately
+                    except Exception as e:
+                        yield self._create_update("debug", f"⚠️ Web search failed: {e}")
+                        await asyncio.sleep(0)  # Allow update to be sent immediately
+                        tavily_result = {
+                            "summary": f"Web search encountered an issue: {str(e)}",
+                            "urls": [],
+                            "search_results": []
+                        }
+                        yield self._create_update("result", "⚠️ Web search completed with warnings")
+                        await asyncio.sleep(0)  # Allow update to be sent immediately
+                else:
+                    yield self._create_update("result", "⚠️ Web search tool not available")
+                    await asyncio.sleep(0)  # Allow update to be sent immediately
+            else:
+                yield self._create_update("thought", f"Document provides complete answer (confidence: {confidence:.1%}). Skipping external tools for faster response...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+                yield self._create_update("result", f"✓ Complete answer found in documents - no external sources needed")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
             
             # Step 4: Synthesize final answer
-            yield self._create_update("thought", "Synthesizing comprehensive analysis...")
+            if should_use_external_tools:
+                yield self._create_update("thought", "Synthesizing comprehensive analysis from all sources...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
+            else:
+                yield self._create_update("thought", "Synthesizing final answer from document analysis...")
+                await asyncio.sleep(0)  # Allow update to be sent immediately
             
-            print(f"🎯 Starting final synthesis...")  # Debug
+            yield self._create_update("debug", "🎯 Starting final synthesis...")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             synthesis_prompt = self._create_synthesis_prompt()
+            
             # Format Data Commons insights from new structure
             data_insights = ""
             data_points = data_commons_result.get("data_points", [])
-            methodology = data_commons_result.get("methodology", "unknown")
+            methodology = data_commons_result.get("methodology", "")
             
-            if data_points:
+            if data_points and should_use_external_tools:
                 data_insights = f"Statistical Data (via {methodology}):\n"
                 for i, point in enumerate(data_points[:3], 1):  # Show top 3 points
                     value = point.get("value", "No data")
                     source = point.get("source", "Data Commons")
                     data_insights += f"{i}. {value} (Source: {source})\n"
-            else:
+            elif should_use_external_tools:
                 data_insights = data_commons_result.get("summary", "No statistical data available")
+            else:
+                data_insights = "External data sources not consulted - answer based on document content only"
+            
+            # Handle web context
+            web_context = ""
+            if should_use_external_tools:
+                web_context = tavily_result.get("summary", "")
+            else:
+                web_context = "Web search not performed - answer based on document content only"
             
             synthesis_input = {
                 "question": question,
                 "rag_analysis": rag_answer,
                 "data_insights": data_insights,
-                "web_context": tavily_result.get("summary", ""),
+                "web_context": web_context,
                 "uploaded_files": ", ".join(uploaded_files)
             }
             
             final_answer = self.llm.invoke(
                 synthesis_prompt.format(**synthesis_input)
             ).content
-            print(f"✅ Final synthesis completed")  # Debug
+            yield self._create_update("debug", "✅ Final synthesis completed")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             
             processing_time = time.time() - start_time
             
@@ -258,10 +430,18 @@ Please provide a comprehensive analysis by combining insights from all available
                 processing_time=processing_time
             )
             
-            yield self._create_update("result", "✓ Analysis complete!", metadata=agent_response.dict())
+            # Create final result message based on what was actually used
+            if should_use_external_tools and len(tools_used) > 1:
+                final_message = f"✓ Comprehensive analysis complete! Sources: {len(all_sources)} total ({', '.join(tool_type.value for tool_type in tools_used)})"
+            else:
+                final_message = f"✓ Document-based analysis complete! ({len(all_sources)} sources) - Faster response by focusing on uploaded content"
+            
+            yield self._create_update("result", final_message, metadata=agent_response.dict())
+            await asyncio.sleep(0)  # Allow update to be sent immediately
             
         except Exception as e:
             yield self._create_update("error", f"Agent processing error: {str(e)}")
+            await asyncio.sleep(0)  # Allow update to be sent immediately
     
     def _create_synthesis_prompt(self) -> ChatPromptTemplate:
         """Create prompt for final synthesis"""
@@ -304,7 +484,7 @@ Please provide a comprehensive analysis by combining insights from all available
             tool=tool,
             metadata=metadata
         )
-        return json.dumps(update.dict()) + "\n"
+        return json.dumps(update.dict())
     
     def get_session_info(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get information about a session"""

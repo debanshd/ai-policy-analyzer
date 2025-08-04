@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Sidebar from './Sidebar'
 import MainPanel from './MainPanel'
 import DetailsPanel from './DetailsPanel'
 import SettingsModal from './SettingsModal'
-import { AnalysisSession, ChatMessage, UploadedFile } from '@/types'
+import { AnalysisSession, ChatMessage, UploadedFile, StreamingUpdate } from '@/types'
 
 export default function PolicyPrismApp() {
   const [sessions, setSessions] = useState<AnalysisSession[]>([])
@@ -16,6 +16,8 @@ export default function PolicyPrismApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [backendReady, setBackendReady] = useState(false)
   const [setupRequired, setSetupRequired] = useState(false)
+  const [currentStreamingUpdates, setCurrentStreamingUpdates] = useState<StreamingUpdate[]>([])
+  const [isProcessing, setIsProcessing] = useState(false)
 
   // Create a new analysis session
   const createNewSession = () => {
@@ -26,8 +28,6 @@ export default function PolicyPrismApp() {
       createdAt: new Date(),
       lastActive: new Date(),
     }
-    
-    console.log('Creating new session:', newSession)
     
     setSessions(prev => [newSession, ...prev])
     setCurrentSession(newSession)
@@ -62,6 +62,18 @@ export default function PolicyPrismApp() {
     
     setMessages(prev => [...prev, newMessage])
     
+    // If this is a user message, start processing
+    if (message.type === 'user') {
+      setIsProcessing(true)
+      setCurrentStreamingUpdates([])
+    }
+    
+    // If this is an assistant message with a complete response, stop processing
+    if (message.type === 'assistant' && message.content && !message.streamingUpdates) {
+      setIsProcessing(false)
+      setCurrentStreamingUpdates([])
+    }
+    
     // Update session last active time
     if (currentSession) {
       const updatedSession = {
@@ -75,11 +87,14 @@ export default function PolicyPrismApp() {
     }
   }
 
-  // Select a session
-  const selectSession = (session: AnalysisSession) => {
-    setCurrentSession(session)
-    setMessages([]) // In a real app, you'd load messages from storage
-  }
+  // Update streaming updates for the details panel
+  const updateStreamingProgress = useCallback((updates: StreamingUpdate[]) => {
+    console.log('🎯 PolicyPrismApp received updates:', updates.length, updates.map(u => u.type).join(', '))
+    setCurrentStreamingUpdates(updates)
+    setIsProcessing(updates.length > 0)
+  }, [])
+
+
 
   // Generate unique IDs
   const generateSessionId = () => Math.random().toString(36).substring(2, 15)
@@ -90,13 +105,12 @@ export default function PolicyPrismApp() {
     checkBackendStatus()
   }, [])
 
-  // Create initial session on mount (always create one for testing)
+  // Create initial session immediately on mount
   useEffect(() => {
-    if (sessions.length === 0) {
-      console.log('Creating initial session...')
+    if (sessions.length === 0 && !currentSession) {
       createNewSession()
     }
-  }, []) // Removed backendReady dependency
+  }, [sessions.length, currentSession])
 
   // Check backend status and show settings if needed
   const checkBackendStatus = async () => {
@@ -189,10 +203,6 @@ export default function PolicyPrismApp() {
       {/* Left Sidebar */}
       <div className={`transition-all duration-300 ${isSidebarCollapsed ? 'w-16' : 'w-80'}`}>
         <Sidebar
-          sessions={sessions}
-          currentSession={currentSession}
-          onNewSession={createNewSession}
-          onSelectSession={selectSession}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -206,6 +216,7 @@ export default function PolicyPrismApp() {
           messages={messages}
           onAddFiles={addFilesToSession}
           onAddMessage={addMessage}
+          onUpdateStreamingProgress={updateStreamingProgress}
         />
       </div>
 
@@ -214,6 +225,8 @@ export default function PolicyPrismApp() {
         <div className="w-80 border-l border-border-light">
           <DetailsPanel
             currentSession={currentSession}
+            currentStreamingUpdates={currentStreamingUpdates}
+            isProcessing={isProcessing}
             onClose={() => setIsDetailsPanelOpen(false)}
           />
         </div>
