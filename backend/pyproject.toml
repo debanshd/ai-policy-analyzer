@@ -32,7 +32,7 @@ dependencies = [
     "langchain>=0.1.0",
     "langchain-openai>=0.0.2",
     "langchain-community>=0.0.10",
-    "langchain-experimental>=0.0.47", 
+    "langchain-experimental>=0.0.47",
     "qdrant-client>=1.7.0",
     "langchain-qdrant>=0.0.1",
     "pymupdf>=1.23.0",
@@ -43,7 +43,10 @@ dependencies = [
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "aiofiles>=23.2.0",
-    "aiohttp>=3.8.0",  # For testing client
+    "aiohttp>=3.8.0", # For testing client
+    "data-gemma",
+    "google-cloud-aiplatform>=1.106.0",
+    "google-auth>=2.40.3",
 ]
 
 [project.optional-dependencies]
@@ -146,3 +149,6 @@ markers = [
     "unit: marks tests as unit tests",
 ]
 asyncio_mode = "auto" 
+
+[tool.uv.sources]
+data-gemma = { git = "https://github.com/datacommonsorg/llm-tools.git" }

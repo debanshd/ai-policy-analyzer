@@ -12,6 +12,7 @@ from models import StreamingUpdate, ToolType, AgentResponse
 from tools.rag_tool import RAGTool
 from tools.tavily_tool import TavilyTool
 from tools.data_commons_tool import DataCommonsTool
+from utils.document_processor import DocumentProcessor
 
 class MultiSourceAnalysisAgent:
     """
@@ -21,8 +22,8 @@ class MultiSourceAnalysisAgent:
     
     def __init__(self):
         self.llm = ChatOpenAI(
-            model=settings.llm_model, 
-            temperature=0.2,
+            model=settings.model_name, 
+            temperature=settings.temperature,
             timeout=30,  # 30 second timeout
             max_retries=2
         )
@@ -33,6 +34,9 @@ class MultiSourceAnalysisAgent:
         self.tavily_tool = None
         self.data_commons_tool = None
         
+        # Initialize document processor
+        self.document_processor = DocumentProcessor()
+        
         # Agent prompt for orchestration
         self.agent_prompt = self._create_agent_prompt()
         
@@ -40,15 +44,37 @@ class MultiSourceAnalysisAgent:
         self._initialize_tools()
     
     def _initialize_tools(self):
-        """Initialize tools safely"""
-        try:
-            self.rag_tool = RAGTool()
-            self.tavily_tool = TavilyTool()
-            self.data_commons_tool = DataCommonsTool()
-        except Exception as e:
-            print(f"Warning: Failed to initialize tools: {e}")
-            # Create minimal fallback tools if needed
+        """Initialize tools - will fail hard if data_gemma is not available"""
+        self.rag_tool = RAGTool()
+        self.tavily_tool = TavilyTool()
+        self.data_commons_tool = DataCommonsTool()  # Hard failure if data_gemma not available
+
+    def process_files(self, files: List[Dict[str, Any]], session_id: str):
+        """
+        Process uploaded files and return vectorstore and file info
+        
+        Args:
+            files: List of file dictionaries with 'filename', 'content', 'content_type'
+            session_id: Session ID for this upload session
             
+        Returns:
+            Tuple of (vectorstore, file_info)
+        """
+        # Process files using document processor
+        vectorstore = self.document_processor.process_uploaded_files(files, session_id)
+        
+        # Create file info for the session
+        file_info = []
+        for file_data in files:
+            file_info.append({
+                'filename': file_data['filename'],
+                'size': file_data['size'],
+                'content_type': file_data.get('content_type', 'unknown'),
+                'processed_at': time.time()
+            })
+        
+        return vectorstore, file_info
+
     def _create_agent_prompt(self) -> ChatPromptTemplate:
         """Create the main agent prompt for orchestration"""
         AGENT_TEMPLATE = """You are the Multi-Source Analysis Agent, an intelligent research assistant for policy analysts. Your role is to provide comprehensive answers by analyzing user-uploaded documents, enriching findings with live statistical data, and providing broader web context.
@@ -67,14 +93,18 @@ User question: {question}
 Please provide a comprehensive analysis by combining insights from all available sources. Be specific about which sources you're drawing from and provide a well-structured response.
 """
         return ChatPromptTemplate.from_template(AGENT_TEMPLATE)
-    
+
     def set_session_vectorstore(self, session_id: str, vectorstore: Qdrant, file_info: List[Dict]):
-        """Set the vectorstore for a specific session"""
-        self.session_stores[session_id] = {
-            'vectorstore': vectorstore,
-            'files': file_info,
-            'created_at': time.time()
-        }
+        """Store vectorstore and file info for a session"""
+        if session_id not in self.session_stores:
+            self.session_stores[session_id] = {
+                'created_at': time.time(),
+                'files': []
+            }
+        
+        self.session_stores[session_id]['vectorstore'] = vectorstore
+        self.session_stores[session_id]['files'].extend(file_info)
+        self.session_stores[session_id]['last_updated'] = time.time()
         
         # Update RAG tool with new vectorstore for this session
         if session_id in self.session_stores and self.rag_tool:
@@ -134,43 +164,25 @@ Please provide a comprehensive analysis by combining insights from all available
             
             # Step 2: Data Commons Analysis with data_gemma
             yield self._create_update("tool", "Fetching real statistical data from Data Commons...", ToolType.DATA_COMMONS_TOOL)
-            
-            if not self.data_commons_tool:
-                yield self._create_update("error", "Data Commons tool not initialized")
-                return
                 
             print(f"📊 Starting Data Commons analysis with data_gemma...")  # Debug
             # Create context-rich query combining original question with RAG insights
             enriched_query = f"{question}\n\nContext from documents: {rag_answer[:200]}..."
             print(f"📊 Query: {enriched_query[:100]}...")  # Debug
             
-            try:
-                data_commons_result = self.data_commons_tool._run(query=enriched_query)
-                tools_used.append(ToolType.DATA_COMMONS_TOOL)
-                print(f"✅ Data Commons analysis completed")  # Debug
-                
-                # Check if we got real data or simulation
-                methodology = data_commons_result.get("methodology", "unknown")
-                data_points_count = len(data_commons_result.get("data_points", []))
-                
-                if methodology == "simulation":
-                    yield self._create_update("result", f"✓ Statistical analysis completed (simulation mode - {data_points_count} insights)")
-                else:
-                    yield self._create_update("result", f"✓ Real statistical data retrieved via {methodology} methodology ({data_points_count} data points)")
-                
-                # Add data commons sources
-                source = data_commons_result.get("source", "Data Commons")
-                if source not in all_sources:
-                    all_sources.append(source)
-                    
-            except Exception as e:
-                print(f"⚠️ Data Commons failed: {e}")
-                data_commons_result = {
-                    "data_points": [],
-                    "summary": f"Statistical data analysis encountered an issue: {str(e)}",
-                    "methodology": "error"
-                }
-                yield self._create_update("result", "⚠️ Statistical analysis completed with warnings")
+            # Hard failure if data_gemma fails - no simulation mode fallback
+            data_commons_result = self.data_commons_tool._run(query=enriched_query)
+            tools_used.append(ToolType.DATA_COMMONS_TOOL)
+            print(f"✅ Data Commons analysis completed")  # Debug
+            
+            methodology = data_commons_result.get("methodology", "unknown")
+            data_points_count = len(data_commons_result.get("data_points", []))
+            yield self._create_update("result", f"✓ Real statistical data retrieved via {methodology} methodology ({data_points_count} data points)")
+            
+            # Add data commons sources
+            source = data_commons_result.get("source", "Data Commons")
+            if source not in all_sources:
+                all_sources.append(source)
             
             # Step 3: Web search for broader context
             yield self._create_update("tool", "Searching web for broader context and definitions...", ToolType.TAVILY_TOOL)
@@ -313,4 +325,25 @@ Please provide a comprehensive analysis by combining insights from all available
     
     def create_new_session(self) -> str:
         """Create a new session ID"""
-        return str(uuid.uuid4()) 
+        return str(uuid.uuid4())
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete a session and its associated data"""
+        if session_id in self.session_stores:
+            del self.session_stores[session_id]
+            return True
+        return False
+
+    def list_sessions(self) -> List[Dict[str, Any]]:
+        """List all active sessions with their metadata"""
+        sessions = []
+        for session_id, session_data in self.session_stores.items():
+            session_info = {
+                'session_id': session_id,
+                'created_at': session_data.get('created_at', 0),
+                'last_updated': session_data.get('last_updated', session_data.get('created_at', 0)),
+                'files': len(session_data.get('files', [])),
+                'file_list': [f['filename'] for f in session_data.get('files', [])]
+            }
+            sessions.append(session_info)
+        return sessions 

@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-background text-text-primary;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent-blue text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent-blue focus:ring-offset-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-surface text-text-primary px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2;
+  }
+  
+  .sidebar {
+    @apply bg-surface border-r border-border-light h-full overflow-y-auto;
+  }
+  
+  .chat-message {
+    @apply animate-fade-in;
+  }
+  
+  .upload-zone {
+    @apply border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-accent-blue hover:bg-accent-blue-light/20 transition-colors duration-200 cursor-pointer;
+  }
+  
+  .upload-zone.active {
+    @apply border-accent-blue bg-accent-blue-light/30;
+  }
+} 
