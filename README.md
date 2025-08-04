@@ -284,3 +284,53 @@ Each test case will be evaluated against the following criteria to provide a hol
     - `Average Latency (s)`: End-to-end response time.
 - **Cost Metrics (via LangSmith):**
     - `Average Cost ($)`: Total cost of model calls per query.
+
+# UI/UX Design Plan: Policy Prism
+
+### **1.0 Core Design Philosophy**
+
+- **Guiding Principle:** **Professional, Clean, and Data-First.** The user is a professional analyst performing focused work. The UI must eliminate distractions and present complex information with maximum clarity. It should feel like a high-performance, intelligent command center.
+- **Inspiration:** **Notion** (for its clean, minimalist text layout and structured feel) and **Linear** (for its professional, high-speed, and modern tool aesthetic).
+- **Keywords:** Minimalist, Structured, Responsive, Transparent, Efficient.
+
+---
+
+### **2.0 Color Palette & Typography (Light Theme)**
+
+- **Color Palette:** A professional and bright color scheme that is easy on the eyes and emphasizes clarity. We will implement a light theme as the default.
+    - **Background:** A clean, soft white or very light gray (e.g., `#FFFFFF` or `#F9FAFB`).
+    - **Primary Text:** A dark, highly readable gray for body content (e.g., `#111827`).
+    - **Secondary Text:** A lighter gray for metadata, borders, and the "thought process" stream (e.g., `#6B7280`).
+    - **Accent Color:** A single, clear but not overpowering accent color for buttons, links, and highlights (e.g., a calm blue `#3B82F6`).
+- **Typography:**
+    - **Font:** A clean, highly-readable sans-serif font like **Inter** or **Source Sans Pro**.
+    - **Hierarchy:** A clear visual hierarchy will be established using font weight and size. Main headings will be bold and larger, AI "thought process" messages will be smaller and in the secondary text color, and the final answer will be in the primary dark text style.
+
+---
+
+### **3.0 Layout & Key Components**
+
+The application will use a three-panel layout for clear organization.
+
+- **Left Sidebar (Navigation & Session History):**
+    - A light-gray, collapsible sidebar.
+    - Contains a prominent **"+ New Analysis"** button at the top.
+    - Lists previous analysis sessions for easy access.
+    - Includes links to Settings and Help at the bottom.
+- **Center Panel (Main Interaction Area):**
+    - This is the largest and primary work area with a white background.
+    - **File Upload Zone:** At the top of a new session, a clean, clear drag-and-drop zone for uploading the initial PDF and image files. After files are uploaded, this area shows a list of the current session's documents.
+    - **Conversation Stream:** The main body of the panel. This will display the chat history.
+        - User queries are right-aligned or have a distinct light background color.
+        - AI responses are left-aligned. The streamed "thought process" messages (e.g., `[Tool: RAG_Tool] Searching documents...`) will appear in the secondary gray text color, building anticipation before the final, complete answer appears below them in the primary dark text.
+    - **Query Input Bar:** A fixed input bar at the bottom with a text field and a "Submit" or "Analyze" button.
+- **Right Sidebar (Contextual Details):**
+    - A collapsible panel that can show metadata about the currently loaded documents, extracted key entities, or saved insights from the current session.
+
+---
+
+### **4.0 Interaction & Animation**
+
+- **Streaming:** All AI messages, from the "thought process" steps to the final answer, should stream in smoothly to make the app feel alive and responsive.
+- **Feedback:** The UI will provide clear visual feedback for user actions: a progress bar or checkmark for file uploads, a subtle pulsing animation on the query bar while the agent is working, and clear hover states on all interactive elements.
+- **Animation:** All animations will be subtle and purposeful (e.g., gentle fade-ins for new messages) to enhance the user experience without being distracting.
