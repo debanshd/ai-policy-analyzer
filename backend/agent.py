@@ -45,10 +45,14 @@ class MultiSourceAnalysisAgent:
         self._initialize_tools()
     
     def _initialize_tools(self):
-        """Initialize tools - will fail hard if data_gemma is not available"""
+        """Initialize tools - data_gemma is optional"""
         self.rag_tool = RAGTool()
         self.tavily_tool = TavilyTool()
-        self.data_commons_tool = DataCommonsTool()  # Hard failure if data_gemma not available
+        try:
+            self.data_commons_tool = DataCommonsTool()  # Will use fallback if data_gemma not available
+        except Exception as e:
+            print(f"⚠️ DataCommons tool initialization failed: {e}")
+            self.data_commons_tool = None
 
     def process_files(self, files: List[Dict[str, Any]], session_id: str):
         """
@@ -188,6 +192,102 @@ Examples of questions typically answerable from documents:
         # Update RAG tool with new vectorstore for this session
         if session_id in self.session_stores and self.rag_tool:
             self.rag_tool.update_vectorstore(vectorstore)
+    
+    def initialize_evaluation_vectorstore(self, session_id: str = "evaluation") -> str:
+        """
+        Initialize vectorstore with policy documents for evaluation
+        
+        Args:
+            session_id: Session ID for evaluation (default: "evaluation")
+            
+        Returns:
+            Session ID used
+        """
+        from pathlib import Path
+        from langchain_core.documents import Document
+        
+        # Load policy documents from evals directory
+        evals_path = Path(__file__).parent.parent / "evals" / "policy_documents"
+        policy_files = [
+            "policy_analysis_framework.txt",
+            "economic_policy_statistics.txt"
+        ]
+        
+        documents = []
+        print(f"🔧 Loading policy documents for backend evaluation...")
+        
+        for policy_file in policy_files:
+            policy_path = evals_path / policy_file
+            if policy_path.exists():
+                print(f"  Loading: {policy_file}")
+                
+                # Read the policy document
+                with open(policy_path, 'r', encoding='utf-8') as f:
+                    policy_content = f.read()
+                
+                # Create larger chunks by combining multiple paragraphs
+                paragraphs = policy_content.split('\n\n')
+                
+                # Combine paragraphs into larger chunks of at least 500 characters
+                current_chunk = ""
+                chunk_count = 0
+                
+                for paragraph in paragraphs:
+                    paragraph = paragraph.strip()
+                    if paragraph:
+                        current_chunk += paragraph + "\n\n"
+                        
+                        # If chunk is large enough, create a document
+                        if len(current_chunk) > 500:
+                            doc = Document(
+                                page_content=current_chunk.strip(),
+                                metadata={
+                                    "source": policy_file,
+                                    "chunk": chunk_count,
+                                    "document_type": "policy_analysis"
+                                }
+                            )
+                            documents.append(doc)
+                            current_chunk = ""
+                            chunk_count += 1
+                
+                # Add any remaining content as final chunk
+                if current_chunk.strip():
+                    doc = Document(
+                        page_content=current_chunk.strip(),
+                        metadata={
+                            "source": policy_file,
+                            "chunk": chunk_count,
+                            "document_type": "policy_analysis"
+                        }
+                    )
+                    documents.append(doc)
+            else:
+                print(f"  Warning: {policy_file} not found, skipping...")
+        
+        print(f"  Created {len(documents)} document chunks from policy analysis files")
+        
+        if not documents:
+            raise ValueError("No policy documents found for evaluation")
+        
+        # Convert documents to file format expected by document processor
+        file_data = []
+        for i, doc in enumerate(documents):
+            file_data.append({
+                'filename': f"policy_chunk_{i}.txt",
+                'content': doc.page_content.encode('utf-8'),
+                'content_type': 'text/plain',
+                'size': len(doc.page_content)
+            })
+        
+        # Process files and create vectorstore using existing infrastructure
+        vectorstore, file_info = self.process_files(file_data, session_id)
+        self.set_session_vectorstore(session_id, vectorstore, file_info)
+        
+        print(f"  ✅ Backend initialized with {len(file_info)} policy document chunks")
+        print(f"  📋 Session ID: {session_id}")
+        
+        return session_id
     
     async def process_query_streaming(
         self, 

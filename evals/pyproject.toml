@@ -26,6 +26,7 @@ dependencies = [
     "Pillow>=9.0.0",
     "langsmith>=0.1.0",
     "rapidfuzz>=3.0.0",
+    "tavily-python>=0.7.10",
 ]
 
 [project.optional-dependencies]
