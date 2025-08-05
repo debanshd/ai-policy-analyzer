@@ -13,7 +13,12 @@ from config import settings
 from models import DataCommonsResult, ToolType
 
 # Import data_gemma library
-from data_gemma import RIGFlow, RAGFlow, OpenAI, DataCommons
+try:
+    from data_gemma import RIGFlow, RAGFlow, OpenAI, DataCommons
+    DATA_GEMMA_AVAILABLE = True
+except ImportError:
+    DATA_GEMMA_AVAILABLE = False
+    print("⚠️ data_gemma not available - DataCommons tool will use fallback data")
 
 class DataCommonsTool(BaseTool):
     """
@@ -35,6 +40,12 @@ class DataCommonsTool(BaseTool):
     
     def _initialize_data_gemma(self):
         """Initialize data_gemma models"""
+        if not DATA_GEMMA_AVAILABLE:
+            print("⚠️ data_gemma not available - DataCommons tool will be disabled")
+            object.__setattr__(self, 'rig_model', None)
+            object.__setattr__(self, 'rag_model', None)
+            return
+            
         try:
             print("🏗️ Initializing data_gemma components...")
             
@@ -89,8 +100,12 @@ class DataCommonsTool(BaseTool):
         print(f"🏛️ DataCommonsTool: Processing query: {query[:100]}...")
         
         if not self.rig_model and not self.rag_model:
-            emit_update("debug", "❌ DataCommons tool not properly initialized")
-            raise Exception("DataCommons tool not properly initialized")
+            emit_update("debug", "❌ DataCommons tool not available - returning fallback response")
+            return {
+                "answer": "DataCommons tool is not available. Please ensure data_gemma is properly installed.",
+                "data_points": [],
+                "metadata": {"source": "fallback", "available": False}
+            }
         
         try:
             emit_update("debug", "📊 Fetching real data from Data Commons...")

@@ -1,0 +1,40 @@
+# Environment variables - IMPORTANT: Never commit these!
+.env
+.env.local
+.env.production
+.env.staging
+*.env
+
+# Results directory
+results/
+*.json
+*.txt
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp 
