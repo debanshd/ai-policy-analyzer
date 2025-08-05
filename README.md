@@ -1,5 +1,11 @@
 # Certification Challenge: Multi-Source Analysis Agent
 
+### **Task 0: Important artifacts**
+
+**Video Walkthrough**: https://www.loom.com/share/aae5fbfdfbfd4c9ab5246594487dca73
+**Architecture**: https://www.notion.so/Certification-Challenge-Policy-Prism-244debb53f1c8075ad26c6c6824923a2
+**Evals**: https://smith.langchain.com/datasets/8df86411-8b34-4cc7-b0b4-e4385bf31a9c
+
 ### **Task 1: Defining your Problem and Audience**
 
 - **Problem:** Policy analysts and researchers waste significant time and effort manually cross-referencing information from their specific reports with live, disparate public data sources.
