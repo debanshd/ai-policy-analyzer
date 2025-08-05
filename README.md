@@ -86,51 +86,45 @@ We conducted a comprehensive performance assessment comparing our **Naive RAG** 
 
 | Retrieval Method | `context_recall` | `faithfulness` | `factual_correctness` | `response_relevancy` | Quality Score | Avg. Latency (s) | Latency StdDev | Total Cost ($) | Cost/Query ($) | Performance Score | Queries |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Naive RAG** | 0.806 | 0.867 | 0.593 | 0.963 | 0.807 | 5.45s | 1.16s | $0.0012 | $0.0004 | 108.170 | 3 |
-| **Parent Document** | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.82s | 0.09s | $0.0001 | $0.0000 | 146.297 | 3 |
-| **Sentence Window** | 0.722 | 0.670 | 0.353 | 0.964 | 0.677 | 11.89s | 1.63s | $0.0006 | $0.0002 | 124.204 | 3 |
-| **HyDE** | 0.806 | 0.845 | 0.450 | 0.987 | 0.772 | 16.41s | 0.97s | $0.0016 | $0.0005 | 98.443 | 3 |
+| **Naive RAG** | 0.896 | 0.792 | 0.618 | 0.976 | 0.820 | 6.02s | 2.16s | $0.0014 | $0.0001 | 134.850 | 12 |
+| **Parent Document** | 0.000 | 0.000 | 0.066 | 0.080 | 0.037 | 1.29s | 1.47s | $0.0001 | $0.0000 | 148.624 | 12 |
+| **Sentence Window** | 0.694 | 0.646 | 0.555 | 0.881 | 0.694 | 10.98s | 3.50s | $0.0007 | $0.0001 | 141.704 | 12 |
+| **HyDE** | 0.896 | 0.767 | 0.552 | 0.974 | 0.797 | 17.37s | 3.75s | $0.0017 | $0.0001 | 132.184 | 12 |
 
 **Key Findings:**
 
 1. **Performance Rankings:**
-   - **Best Overall**: Parent Document (Score: 146.297) - Fastest and most cost-efficient
-   - **Highest Quality**: Naive RAG (Score: 0.807) - Best overall quality metrics
-   - **Fastest**: Parent Document (0.82s) - 85% faster than Naive RAG
+   - **Best Overall**: Parent Document (Score: 148.624) - Fastest and most cost-efficient
+   - **Highest Quality**: Naive RAG (Score: 0.820) - Best overall quality metrics
+   - **Fastest**: Parent Document (1.29s) - 78% faster than Naive RAG
    - **Most Cost Efficient**: Parent Document ($0.0000/query) - Zero additional cost
 
 2. **Quality vs. Performance Trade-offs:**
-   - **Naive RAG**: Excellent balance with high context recall (0.806), faithfulness (0.867), and factual correctness (0.593)
-   - **Parent Document**: Outstanding speed and cost efficiency but zero quality scores due to retrieval issues
-   - **Sentence Window**: Moderate quality with good context recall (0.722) but higher latency (11.89s)
-   - **HyDE**: High faithfulness (0.845) and response relevancy (0.987) but slowest execution (16.41s)
+   - **Naive RAG**: Excellent balance with high context recall (0.896), faithfulness (0.792), and factual correctness (0.618)
+   - **Parent Document**: Outstanding speed and cost efficiency but very low quality scores (0.037) due to retrieval issues
+   - **Sentence Window**: Moderate quality with good context recall (0.694) but higher latency (10.98s)
+   - **HyDE**: High faithfulness (0.767) and response relevancy (0.974) but slowest execution (17.37s)
 
 3. **Factual Correctness Achievement:**
    - Significant improvement with measurable factual correctness scores across methods
-   - Naive RAG leads with 0.593 factual correctness, demonstrating reliable information accuracy
-   - HyDE follows with 0.450, showing good factual grounding despite complexity
+   - Naive RAG leads with 0.618 factual correctness, demonstrating reliable information accuracy
+   - HyDE follows with 0.552, showing good factual grounding despite complexity
+   - Parent Document shows minimal factual correctness (0.066) due to retrieval limitations
 
 4. **Cost and Latency Analysis:**
-   - **Cost Range**: $0.0000 to $0.0005 per query
-   - **Latency Range**: 0.82s to 16.41s per query
+   - **Cost Range**: $0.0000 to $0.0001 per query
+   - **Latency Range**: 1.29s to 17.37s per query
    - **Cost-Performance Leader**: Parent Document with near-zero cost and sub-second response
    - **Quality-Cost Leader**: Naive RAG with best quality-to-cost ratio
 
 **Implementation Decision:**
-Based on comprehensive evaluation data, we recommend **Naive RAG** for production use due to its superior quality metrics (0.807 quality score) with reasonable performance (5.45s, $0.0004/query). While Parent Document is fastest, its zero quality scores make it unsuitable for production. Naive RAG provides the optimal balance of accuracy, cost-effectiveness, and acceptable latency for real-world applications.
+Based on comprehensive evaluation data, we recommend **Naive RAG** for production use due to its superior quality metrics (0.820 quality score) with reasonable performance (6.02s, $0.0001/query). While Parent Document is fastest, its very low quality scores (0.037) make it unsuitable for production. Naive RAG provides the optimal balance of accuracy, cost-effectiveness, and acceptable latency for real-world applications.
 
 **LangSmith Integration:**
 - ✅ Full tracing with cost and latency tracking
 - ✅ Linked evaluation runs with dataset examples
 - ✅ Comprehensive metrics logging and analysis
-- 📊 **Dataset**: https://smith.langchain.com/datasets/050c565c-dcbd-4791-b330-b0afbc084ef5
-
-**Next Steps:**
-1. Deploy Naive RAG as the primary retrieval method
-2. Investigate Parent Document retrieval issues for potential optimization
-3. Consider HyDE for high-accuracy use cases where latency is less critical
-4. Implement hybrid approaches combining speed and quality characteristics
-
+- 📊 **Dataset**: https://smith.langchain.com/datasets/8df86411-8b34-4cc7-b0b4-e4385bf31a9c
 ---
 
 ### **Your Final Submission**

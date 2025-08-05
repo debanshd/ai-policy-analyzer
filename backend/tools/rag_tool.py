@@ -155,12 +155,13 @@ Answer:"""
 
         return ChatPromptTemplate.from_template(RAG_TEMPLATE)
     
-    def _run(self, question: str) -> Dict[str, Any]:
+    def _run(self, question: str, callback_handler=None, **kwargs) -> Dict[str, Any]:
         """
         Execute RAG with the configured retrieval method
         
         Args:
             question: The user's question
+            callback_handler: Optional callback for streaming updates
             
         Returns:
             Dictionary containing answer and relevant chunks
@@ -168,8 +169,11 @@ Answer:"""
         import time
         
         def emit_update(update_type: str, content: str, metadata=None):
-            """Simple debug function for evaluation purposes"""
-            print(f"[{update_type.upper()}] {content}")
+            """Helper to emit updates if callback handler is available"""
+            if callback_handler:
+                callback_handler(update_type, content, metadata)
+            else:
+                print(f"[{update_type.upper()}] {content}")
         
         if not self.vectorstore:
             emit_update("debug", "❌ No vectorstore available")
