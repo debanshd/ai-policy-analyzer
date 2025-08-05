@@ -84,18 +84,24 @@ Provide a detailed answer based on the context, and mention which documents or s
             emit_update("debug", f"   ✅ Retriever created in {retriever_time:.2f}s", {"retriever_time": retriever_time})
             
             emit_update("debug", "🔗 Building RAG chain...")
-            # Build RAG chain using LCEL pattern from notebook
+            # Build RAG chain using exact pattern from notebook
             rag_chain = (
-                # Get context and question
+                # INVOKE CHAIN WITH: {"question" : "<<SOME USER QUESTION>>"}
+                # "question" : populated by getting the value of the "question" key
+                # "context"  : populated by getting the value of the "question" key and chaining it into the retriever
                 {"context": itemgetter("question") | retriever, "question": itemgetter("question")}
-                # Format the context for the prompt
+                # "context"  : is assigned to a RunnablePassthrough object (will not be called or considered in the next step)
+                #              by getting the value of the "context" key from the previous step
+                | RunnablePassthrough.assign(context=itemgetter("context"))
+                # Store raw docs and format context for the prompt
                 | RunnablePassthrough.assign(
+                    raw_docs=itemgetter("context"),
                     context=lambda x: self._format_context(x["context"])
                 )
-                # Generate response
-                | {"response": self.rag_prompt | self.llm | StrOutputParser(), 
-                   "context": itemgetter("context"),
-                   "retrieved_docs": itemgetter("context")}
+                # "response" : the "context" and "question" values are used to format our prompt object and then piped
+                #              into the LLM and stored in a key called "response"
+                # "context"  : populated by getting the value of the "context" key from the previous step
+                | {"response": self.rag_prompt | self.llm, "context": itemgetter("context"), "raw_docs": itemgetter("raw_docs")}
             )
             
             emit_update("debug", "⚙️ Executing RAG chain...")
@@ -107,10 +113,15 @@ Provide a detailed answer based on the context, and mention which documents or s
             chain_time = time.time() - chain_start_time
             emit_update("debug", f"   ✅ RAG chain executed in {chain_time:.2f}s", {"chain_execution_time": chain_time})
             
+            # Extract response content
+            response_content = result["response"]
+            if hasattr(response_content, 'content'):
+                response_content = response_content.content
+            
             # Convert retrieved documents to DocumentChunk format
             relevant_chunks = []
-            if isinstance(result.get("retrieved_docs"), list):
-                for doc in result["retrieved_docs"]:
+            if isinstance(result.get("raw_docs"), list):
+                for doc in result["raw_docs"]:
                     if hasattr(doc, 'page_content') and hasattr(doc, 'metadata'):
                         chunk = DocumentChunk(
                             content=doc.page_content,
@@ -120,9 +131,9 @@ Provide a detailed answer based on the context, and mention which documents or s
                         relevant_chunks.append(chunk)
             
             return {
-                "answer": result["response"],
+                "answer": response_content,
                 "relevant_chunks": [chunk.dict() for chunk in relevant_chunks],
-                "confidence_score": self._calculate_confidence_score(result["response"], relevant_chunks),
+                "confidence_score": self._calculate_confidence_score(response_content, relevant_chunks),
                 "tool_used": ToolType.RAG_TOOL
             }
             
